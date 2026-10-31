@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
-DEFAULTS = dict(OBSERVED="", LINKEDIN_COMPANIES={}, SOURCES={}, UNITS=[], STRUCTURE=[], UNIT_PARENTS={},
+DEFAULTS = dict(DEFAULT_UNIT=None, STALE_UNITS={}, UNIT_PRECEDENCE=[], OBSERVED="", LINKEDIN_COMPANIES={}, SOURCES={}, UNITS=[], STRUCTURE=[], UNIT_PARENTS={},
                 BOARD=[], UNIT_LEXICON={}, EMPLOYER_PATTERNS=[])
 
 
@@ -25,10 +25,11 @@ def load(name: str) -> SimpleNamespace:
         if cand.exists():
             p = cand
     if p.suffix == ".json":
-        data = {**DEFAULTS, **json.loads(p.read_text())}
+        data = {**DEFAULTS, **{k: v for k, v in json.loads(p.read_text()).items() if not k.startswith("$")}}
         data["UNITS"] = [tuple(u) for u in data["UNITS"]]
         data["STRUCTURE"] = [tuple(s) for s in data["STRUCTURE"]]
         data["BOARD"] = [tuple(b) for b in data["BOARD"]]
+        data["UNIT_PRECEDENCE"] = [tuple(p) for p in data["UNIT_PRECEDENCE"]]
         return SimpleNamespace(**data)
     mod = importlib.import_module(f"{__name__}.{name}")
     return SimpleNamespace(**{**DEFAULTS, **{k: getattr(mod, k) for k in dir(mod) if k.isupper()}})

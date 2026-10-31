@@ -288,6 +288,12 @@ pre#out { white-space: pre-wrap; }
 .layer h3 i { width: 8px; height: 8px; border-radius: 50%; }
 .layer p { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
 
+#toast { position: fixed; right: max(20px, env(safe-area-inset-right, 0px)); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 50; display: flex; align-items: center; gap: 10px;
+  background: var(--panel-2); border: 1px solid color-mix(in oklab, var(--confirmed) 45%, var(--line)); color: var(--ink); padding: 11px 16px; border-radius: 12px;
+  font: 500 13px var(--body); box-shadow: 0 20px 50px rgba(0,0,0,.5); opacity: 0; transform: translateY(10px); pointer-events: none; }
+#toast i { width: 8px; height: 8px; border-radius: 50%; background: var(--confirmed); box-shadow: 0 0 12px var(--confirmed); }
+#toast.show { animation: toastIn 5s ease forwards; }
+@keyframes toastIn { 0% { opacity: 0; transform: translateY(10px); } 6%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(10px); } }
 body.static #addRel, body.static #mergeE, body.static [data-reject], body.static #hn, body.static #iu, body.static #rb { display: none; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .wires.anim path { stroke-dashoffset: 0; } }

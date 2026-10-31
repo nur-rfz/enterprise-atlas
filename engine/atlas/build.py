@@ -31,35 +31,45 @@ def build_seed(store: Store) -> None:
     for eid, typ, label, aliases in T.UNITS:
         store.upsert_entity(eid, NodeType(typ), label, {"seed": True}, aliases)
     for child, parent, src, conf in T.STRUCTURE:
-        store.assert_edge(child, parent, EdgeType.BELONGS_TO, basis=Basis.OFFICIAL_COMPANY, confidence=conf,
+        store.assert_edge(child, parent, EdgeType.BELONGS_TO, basis=Basis(T.SOURCES[src]["basis"]), confidence=conf,
                           evidence_id=ev[src], extractor="seed", rationale=T.SOURCES[src]["excerpt"],
                           observed_at=T.OBSERVED)
     for child, parent in T.UNIT_PARENTS.items():
         store.assert_edge(child, parent, EdgeType.BELONGS_TO, basis=Basis.HEURISTIC, confidence=0.5, evidence_id=None,
                           extractor="seed", rationale=f"{T.COMPANY_NAME} unit; legal parent not yet sourced. Add an "
                           "annual-report citation to confirm.")
-    for name, role in T.BOARD:
+    for entry in T.BOARD:
+        # (name, role) or (name, role, source_key[, unit_id]); people listed with their sourced role
+        name, role = entry[0], entry[1]
+        src = entry[2] if len(entry) > 2 else ("linkedin_company" if "linkedin_company" in ev else next(iter(ev)))
+        unit = entry[3] if len(entry) > 3 else T.COMPANY_ID
         pid = f"person:name:{slug(name)}"
-        store.upsert_entity(pid, NodeType.PERSON, name, {"title": role, "seniority": "board", "name_visible": True,
-                                                         "functions": [], "unit": T.COMPANY_ID})
-        store.assert_edge(pid, T.COMPANY_ID, EdgeType.WORKS_IN, basis=Basis.OFFICIAL_COMPANY, confidence=0.95,
-                          evidence_id=ev["linkedin_company"], extractor="seed",
-                          rationale=f"Listed in the company imprint as: {role}.", observed_at=T.OBSERVED)
+        board = bool(re.search(r"board|chairman|vorstand|ceo|cfo", role, re.I))
+        store.upsert_entity(pid, NodeType.PERSON, name, {"title": role, "seniority": "board" if board else "vp",
+                                                         "name_visible": True, "functions": [], "unit": unit,
+                                                         "headline": None})
+        store.assert_edge(pid, unit, EdgeType.WORKS_IN, basis=Basis(T.SOURCES[src]["basis"]), confidence=0.9,
+                          evidence_id=ev[src], extractor="seed",
+                          rationale=f"Named by the source as: {role}.", observed_at=T.OBSERVED)
 
 
 # ------------------------------------------------------- org placement helpers
 def _unit_for(tp) -> tuple[str, list[str]]:
+    """Pick the unit a headline places someone in. Units listed in the target's STALE_UNITS (e.g. a
+    spun-off company) are only used when nothing else matches, and carry a staleness note."""
     notes = []
-    units = [u for u in tp.unit_hints if u != "org:daimler-truck"]
-    if "org:daimler-truck" in tp.unit_hints and not units:
-        notes.append("Title mentions trucks/buses: since the 2021 spin-off these belong to Daimler Truck, "
-                     "so this affiliation may be stale.")
-        return "org:daimler-truck", notes
+    stale = getattr(T, "STALE_UNITS", {}) or {}
+    units = [u for u in tp.unit_hints if u not in stale]
+    hit_stale = [u for u in tp.unit_hints if u in stale]
+    if hit_stale and not units:
+        notes.append(stale[hit_stale[0]])
+        return hit_stale[0], notes
     if tp.historic_employer:
-        notes.append("Employer given as 'Daimler AG' (pre-2022 name); affiliation may be stale.")
-    if "bu:mb-cars" in units and "bu:mb-vans" in units:
-        units.remove("bu:mb-vans")  # "vans" often appears as a product, cars wins when both
-    return (units[0] if units else "bu:mb-ag"), notes
+        notes.append("Employer given under a former company name; affiliation may be stale.")
+    for a, b in getattr(T, "UNIT_PRECEDENCE", []) or []:
+        if a in units and b in units:
+            units.remove(b)
+    return (units[0] if units else (getattr(T, "DEFAULT_UNIT", None) or T.COMPANY_ID)), notes
 
 
 def ensure_function(store: Store, unit: str, fn: str) -> str:

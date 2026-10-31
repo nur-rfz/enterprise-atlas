@@ -1,0 +1,97 @@
+{
+  "$comment": "BMW Group target. Every UNITS/STRUCTURE/BOARD entry cites a SOURCES key. Built with the enterprise-atlas skill on 2026-10-31 from the Needle LinkedIn company record and web search.",
+  "COMPANY_ID": "org:bmw-group",
+  "COMPANY_NAME": "BMW Group",
+  "DEFAULT_UNIT": "org:bmw-group",
+  "OBSERVED": "2026-10-31",
+  "LINKEDIN_COMPANIES": {"bmw-group": "2387"},
+  "SOURCES": {
+    "linkedin_company": {
+      "url": "https://www.linkedin.com/company/bmw-group/", "title": "BMW Group · LinkedIn company page",
+      "basis": "official_company", "provider": "Needle/LinkedIn", "access": "licensed",
+      "excerpt": "With its four brands, BMW, MINI, Rolls-Royce and BMW Motorrad, the BMW Group is the world's leading premium manufacturer of automobiles and motorcycles and also provides premium financial services. Workforce of 154,540 employees as of 31 December 2025; 68,158 on LinkedIn; HQ Munich."
+    },
+    "hubs_2025": {
+      "url": "https://www.bmwgroup.com/en/news/general/2025/it-and-software-hubs.html", "title": "BMW Group · IT and software hubs (2025)",
+      "basis": "official_company", "provider": "web search",
+      "excerpt": "The BMW Group's global hub network currently encompasses six countries, from the USA to Portugal, Romania, South Africa, India and China. BMW TechWorks Romania is a joint venture with NTT Data. (search summary, not verbatim)"
+    },
+    "car_it": {
+      "url": "https://www.bmwgroup.jobs/en/discover-our-world/entities.html", "title": "BMW Group careers · Entities",
+      "basis": "official_company", "provider": "web search",
+      "excerpt": "Founded in 2001, BMW Car IT is a wholly owned subsidiary of the BMW Group specialising in next-generation software for future BMW vehicles and motorcycles. (search summary)"
+    },
+    "it_leadership": {
+      "url": "https://www.press.bmwgroup.com/france/article/detail/T0450630FR/alexander-buresch-est-nommé-à-la-direction-de-bmw-group-financial-services-et-franz-decker-prend-la-direction-de-bmw-group-it",
+      "title": "BMW Group press · Franz Decker takes over management of BMW Group IT", "basis": "official_company", "provider": "web search",
+      "excerpt": "Press release: Alexander Buresch appointed to lead BMW Group Financial Services; Franz Decker takes over the management of BMW Group IT. (headline; appointment date to verify)"
+    },
+    "cio_de": {
+      "url": "https://www.cio.de/article/3700930/bmw-ag-it-fakten-und-it-strategie.html", "title": "CIO.de · BMW AG: IT-Fakten und IT-Strategie",
+      "basis": "press", "provider": "web search",
+      "excerpt": "Lists BMW's IT subsidiaries as Critical TechWorks (PT), Lingyue Digital Information Technology (CN) and BMW ZA IT Hub. (search summary)"
+    },
+    "board_ceo": {
+      "url": "https://pulse2.com/bmw-milan-nedeljkovic/amp/", "title": "BMW: Milan Nedeljković named Chairman of the Board of Management",
+      "basis": "press", "provider": "web search",
+      "excerpt": "Milan Nedeljković succeeded Oliver Zipse as Chairman of the Board of Management of BMW AG on 14 May 2026; previously responsible for Production."
+    },
+    "board_dir": {
+      "url": "https://www.unifygtm.com/insights/executives/bmw-ceo", "title": "BMW executives directory (cites BMW Leadership & Governance)",
+      "basis": "press", "provider": "web search",
+      "excerpt": "Board of Management: Walter Mertl (Finance), Jochen Goller (Customer, Brands, Sales), Nicolai Martin (Purchasing and Supplier Network, since 1 June 2025), Joachim Post (Development, since 1 July 2025)."
+    }
+  },
+  "UNITS": [
+    ["org:bmw-group", "Company", "BMW Group", ["BMW AG", "Bayerische Motoren Werke AG", "BMW", "BMW Group"]],
+    ["bu:bmw-group-it", "BusinessUnit", "BMW Group IT", ["BMW IT", "Group IT"]],
+    ["bu:bmw-car-it", "BusinessUnit", "BMW Car IT", ["BMW Car IT GmbH"]],
+    ["bu:critical-techworks", "BusinessUnit", "Critical TechWorks", ["CTW", "Critical Techworks"]],
+    ["bu:bmw-techworks-romania", "BusinessUnit", "BMW TechWorks Romania", ["BMW TechWorks RO"]],
+    ["bu:bmw-hub-india", "BusinessUnit", "BMW Group IT Hub India", ["BMW TechWorks India"]],
+    ["bu:bmw-it-hub-za", "BusinessUnit", "BMW IT Hub South Africa", ["BMW ZA IT Hub"]],
+    ["bu:lingyue", "BusinessUnit", "Lingyue Digital Information Technology", ["Lingyue"]],
+    ["bu:mini", "BusinessUnit", "MINI", []],
+    ["bu:rolls-royce", "BusinessUnit", "Rolls-Royce Motor Cars", ["Rolls-Royce"]],
+    ["bu:bmw-motorrad", "BusinessUnit", "BMW Motorrad", []],
+    ["bu:bmw-fs", "BusinessUnit", "BMW Financial Services", ["BMW Bank", "BMW Financial Services"]],
+    ["bu:bmw-m", "BusinessUnit", "BMW M", ["BMW M GmbH"]]
+  ],
+  "STRUCTURE": [
+    ["bu:mini", "org:bmw-group", "linkedin_company", 0.9],
+    ["bu:rolls-royce", "org:bmw-group", "linkedin_company", 0.9],
+    ["bu:bmw-motorrad", "org:bmw-group", "linkedin_company", 0.9],
+    ["bu:bmw-fs", "org:bmw-group", "linkedin_company", 0.85],
+    ["bu:bmw-group-it", "org:bmw-group", "it_leadership", 0.85],
+    ["bu:bmw-car-it", "org:bmw-group", "car_it", 0.85],
+    ["bu:bmw-techworks-romania", "org:bmw-group", "hubs_2025", 0.8],
+    ["bu:bmw-hub-india", "org:bmw-group", "hubs_2025", 0.75],
+    ["bu:bmw-it-hub-za", "org:bmw-group", "hubs_2025", 0.75],
+    ["bu:critical-techworks", "bu:bmw-group-it", "cio_de", 0.7],
+    ["bu:lingyue", "bu:bmw-group-it", "cio_de", 0.7]
+  ],
+  "UNIT_PARENTS": {"bu:bmw-m": "org:bmw-group"},
+  "BOARD": [
+    ["Milan Nedeljković", "Chairman of the Board of Management", "board_ceo"],
+    ["Walter Mertl", "Member of the Board of Management, Finance", "board_dir"],
+    ["Jochen Goller", "Member of the Board of Management, Customer, Brands, Sales", "board_dir"],
+    ["Nicolai Martin", "Member of the Board of Management, Purchasing and Supplier Network", "board_dir"],
+    ["Joachim Post", "Member of the Board of Management, Development", "board_dir"],
+    ["Franz Decker", "Head of BMW Group IT (per BMW press release)", "it_leadership", "bu:bmw-group-it"]
+  ],
+  "UNIT_LEXICON": {
+    "bu:bmw-group-it": ["bmw group it", "group it", "bmw it"],
+    "bu:bmw-car-it": ["car it"],
+    "bu:critical-techworks": ["critical techworks", "ctw"],
+    "bu:bmw-techworks-romania": ["techworks romania", "bmw techworks ro\\w*", "cluj"],
+    "bu:bmw-hub-india": ["techworks india", "it hub india"],
+    "bu:bmw-it-hub-za": ["it hub south africa", "za it hub"],
+    "bu:lingyue": ["lingyue"],
+    "bu:mini": ["mini"],
+    "bu:rolls-royce": ["rolls royce"],
+    "bu:bmw-motorrad": ["motorrad", "motorcycles?"],
+    "bu:bmw-fs": ["financial services", "bmw bank", "leasing"],
+    "bu:bmw-m": ["bmw m gmbh", "bmw m"]
+  },
+  "EMPLOYER_PATTERNS": ["bmw\\w*", "mini", "rolls royce", "critical techworks", "bayerische motoren werke", "lingyue"]
+}

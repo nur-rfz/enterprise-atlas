@@ -9,6 +9,11 @@ OBSERVED = "2026-10-31"
 
 COMPANY_ID = "org:mercedes-benz-group"
 COMPANY_NAME = "Mercedes-Benz Group"
+# People-search results are scoped to the "Mercedes-Benz AG" LinkedIn company.
+DEFAULT_UNIT = "bu:mb-ag"
+STALE_UNITS = {"org:daimler-truck": "Title mentions trucks/buses: since the 2021 spin-off these belong to Daimler Truck, "
+                                    "so this affiliation may be stale."}
+UNIT_PRECEDENCE = [("bu:mb-cars", "bu:mb-vans")]  # "vans" often appears as a product; cars wins when both
 
 # LinkedIn company ids used to scope people / job searches (resolved through Needle).
 LINKEDIN_COMPANIES = {

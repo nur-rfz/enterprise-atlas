@@ -51,12 +51,14 @@ async function boot() {
   try { if (window.ATLAS_STATIC) throw 0; META = await liveApi("/api/meta"); }
   catch { SNAP = await (await fetch("snapshot.json")).json(); META = SNAP["/api/meta"]; document.body.classList.add("static"); }
   $("#company").textContent = META.company;
+  document.title = `Atlas · ${META.company.replace(/ Group$/, "")}`;
   if (SNAP) $("#liveTxt").textContent = "Snapshot · " + (SNAP.generated_at || "").slice(0, 10);
   document.addEventListener("keydown", (e) => { if (e.key === "/" && document.activeElement !== $("#q")) { e.preventDefault(); $("#q").focus(); } if (e.key === "Escape") closeDrawer(); });
   $("#problem").textContent = META.problem.label;
   document.querySelectorAll(".side a").forEach((a) => a.addEventListener("click", () => go(a.dataset.view)));
   $("#drawerClose").onclick = closeDrawer;
   setupSearch();
+  if (!SNAP) watchForUpdates();
   go(location.hash.slice(1) || "map");
 }
 
@@ -304,11 +306,13 @@ async function map() {
   const shownTeams = teams.filter((t) => !(t.type === "Function" && teams.some((x) => x !== t && parent[x.id] === t.id && x.w >= t.w * 0.6))).slice(0, 8);
   const unitOfNode = (id) => { let x = id; while (x && nodes[x] && nodes[x].type !== "BusinessUnit" && nodes[x].type !== "Company") x = parent[x]; return x; };
   const teamOfPerson = (id) => { let x = parent[id]; while (x) { if (shownTeams.some((t) => t.id === x)) return x; x = parent[x]; } return null; };
-  const PREFER = { procurement: /software|\bit\b/i, technical_approver: /after ?sales|warranty/i };
+  const PREFER = { procurement: [/software|saas/i, /\bit\b/i], technical_approver: [/after ?sales|warranty|data|platform/i] };
+  const usedIds = new Set();
   const bestPerRole = ROLE_ORDER.map((r) => {
     let cands = committee[r].top.slice().sort((a, b) => b.confidence * b.score - a.confidence * a.score);
-    const pref = PREFER[r] && cands.filter((p) => PREFER[r].test(p.title || p.label));
-    if (pref && pref.length) cands = pref;
+    for (const re of PREFER[r] || []) { const pref = cands.filter((p) => re.test(p.title || p.label)); if (pref.length) { cands = pref; break; } }
+    const fresh = cands.filter((p) => !usedIds.has(p.id)); if (fresh.length) cands = fresh;
+    if (cands[0]) usedIds.add(cands[0].id);
     return { role: r, p: cands[0], n: committee[r].count };
   });
   const relevance = (w) => (w / maxW > 0.45 ? ["target", "Target domain"] : w / maxW > 0.1 ? ["adjacent", "Adjacent"] : ["low", "Low relevance"]);
@@ -624,6 +628,31 @@ function form(title, fields, onSubmit) {
     try { await onSubmit(v); } catch (err) { alert(err.message); }
   };
   dlg.showModal();
+}
+
+/* ------------------------------------------------------------- live updates */
+const totals = (m) => ({ people: m.stats.entities.Person || 0, claims: Object.values(m.stats.assertions || {}).reduce((a, b) => a + b, 0),
+  evidence: Object.values(m.stats.evidence || {}).reduce((a, b) => a + b, 0) });
+function watchForUpdates() {
+  setInterval(async () => {
+    let m;
+    try { m = await liveApi("/api/meta"); } catch { return; }
+    const a = totals(META), b = totals(m);
+    if (a.people === b.people && a.claims === b.claims && a.evidence === b.evidence) return;
+    META = m;
+    const parts = [];
+    if (b.people !== a.people) parts.push(`${b.people > a.people ? "+" : ""}${b.people - a.people} people`);
+    if (b.claims !== a.claims) parts.push(`${b.claims > a.claims ? "+" : ""}${b.claims - a.claims} claims`);
+    if (b.evidence !== a.evidence) parts.push(`${b.evidence > a.evidence ? "+" : ""}${b.evidence - a.evidence} evidence`);
+    toast(`Graph updated · ${parts.join(" · ")}`);
+    if (!$("#drawer").classList.contains("open")) render(location.hash.slice(1) || "map");
+  }, 3000);
+}
+function toast(msg) {
+  let t = $("#toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+  t.innerHTML = `<i></i>${esc(msg)}`;
+  t.classList.remove("show"); void t.offsetWidth; t.classList.add("show");
 }
 
 /* ------------------------------------------------------------------ search */

@@ -68,6 +68,9 @@ SUBFUNCTIONS: dict[str, tuple[str, str, list[str]]] = {
     "field_quality": ("quality", "Field Quality", [r"field (quality|data)", r"felddaten", r"feldqualitaet", r"market quality"]),
     "it_procurement": ("procurement", "IT & Services Procurement", [r"it (procurement|purchasing|einkauf)", r"(procurement|purchasing|einkauf) (it|services|software|digital)", r"indirect", r"non production", r"general purchasing", r"nonproduction"]),
     "enterprise_architecture": ("it", "Enterprise Architecture", [r"enterprise architect\w*", r"solution architect\w*", r"architecture"]),
+    "bi_analytics": ("data_ai", "BI & Analytics", [r"business intelligence", r"bi", r"analytics", r"reporting", r"dashboard\w*", r"self service", r"data visuali[sz]ation", r"visuali[sz]ation"]),
+    "data_platform": ("data_ai", "Data Platform & Engineering", [r"data platform\w*", r"data lake\w*", r"lakehouse", r"data engineer\w*", r"data warehouse", r"data mesh", r"data products?", r"datenplattform", r"enterprise data", r"data (and|&) platforms?", r"data hub", r"cloud data hub", r"data portal"]),
+    "data_governance": ("data_ai", "Data Strategy & Governance", [r"data governance", r"data strateg\w*", r"chief data", r"cdo", r"data office", r"data management", r"datenstrategie"]),
 }
 
 SENIORITY: list[tuple[str, int, list[str]]] = [

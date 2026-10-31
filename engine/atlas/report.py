@@ -144,7 +144,7 @@ def entry_paths(store: Store, problem: Problem) -> list[dict]:
         "intro", [("introducer", "assistant"), ("problem_owner", None), ("business_sponsor", None)])
     add("Formal vendor route",
         "Register with the software category manager early so procurement is not the blocker once the business says yes.",
-        "formal", [("procurement", r"software|\bit\b"), ("technical_approver", "after ?sales"), ("business_sponsor", None)])
+        "formal", [("procurement", r"software|saas"), ("technical_approver", "after ?sales|data|platform"), ("business_sponsor", None)])
     return paths
 
 
@@ -154,7 +154,9 @@ def signals(store: Store, limit: int = 40) -> list[dict]:
     counts = {r[0]: r[1] for r in store.db.execute("SELECT evidence_id, COUNT(*) FROM assertions GROUP BY evidence_id")}
     rows = [dict(e, claims=counts.get(e["id"], 0)) for e in store.evidence() if e["basis"] not in skip]
     seen, out = set(), []
-    for r in sorted(rows, key=lambda r: (r["basis"] == "official_company", -(r["claims"]))):
+    prio = {"job_ad": 0, "event_program": 1, "vendor_claim": 2, "association": 3, "procurement_record": 4, "publication": 5,
+            "press": 6, "official_company": 7}
+    for r in sorted(rows, key=lambda r: (prio.get(r["basis"], 8), -(r["claims"]))):
         if r["url"] in seen:
             continue
         seen.add(r["url"])

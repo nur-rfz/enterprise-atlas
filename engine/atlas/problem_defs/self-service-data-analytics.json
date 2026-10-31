@@ -1,0 +1,99 @@
+{
+  "$comment": "Problem for a data analytics tool: business teams query enterprise data in natural language without waiting for BI tickets.",
+  "id": "self-service-data-analytics",
+  "label": "Self-service data analytics",
+  "description": "A data analytics tool that lets business and engineering teams explore enterprise data in natural language, on top of the existing data platform, without BI ticket queues.",
+  "topics": {
+    "analytics": [
+      "analytics?",
+      "analyst\\w*",
+      "business intelligence",
+      "bi",
+      "reporting",
+      "dashboard\\w*",
+      "self service",
+      "datenanaly\\w*",
+      "data visuali[sz]ation"
+    ],
+    "data_platform": [
+      "data platform\\w*",
+      "data lake\\w*",
+      "lakehouse",
+      "data engineer\\w*",
+      "data warehouse",
+      "data mesh",
+      "data products?",
+      "datenplattform",
+      "enterprise data",
+      "data (and|&) platforms?",
+      "data hub",
+      "data portal"
+    ],
+    "data_leadership": [
+      "chief data officer",
+      "cdo",
+      "head of data",
+      "data strateg\\w*",
+      "data governance",
+      "data office"
+    ],
+    "ai": [
+      "ai",
+      "ki",
+      "genai",
+      "llm",
+      "machine learning",
+      "data scien\\w*"
+    ]
+  },
+  "owner_functions": [
+    "data_ai"
+  ],
+  "owner_subfunctions": [
+    "bi_analytics",
+    "data_platform",
+    "data_governance"
+  ],
+  "adjacent_functions": [
+    "it",
+    "procurement",
+    "finance"
+  ],
+  "technologies": [
+    "Databricks",
+    "Snowflake",
+    "AWS",
+    "Azure",
+    "Power BI",
+    "Tableau",
+    "Qlik",
+    "SAP"
+  ],
+  "search_titles": [
+    "head of data",
+    "chief data officer",
+    "data analytics",
+    "business intelligence",
+    "data platform",
+    "analytics lead",
+    "data product owner",
+    "data strategy",
+    "data governance",
+    "IT procurement",
+    "software category manager",
+    "enterprise architect"
+  ],
+  "job_keywords": [
+    "self-service analytics",
+    "data platform",
+    "business intelligence"
+  ],
+  "web_queries": [
+    "BMW Group data analytics conference speaker",
+    "BMW data platform AWS case study",
+    "BMW Group job data analytics platform"
+  ],
+  "procurement_terms": [
+    "BMW"
+  ]
+}

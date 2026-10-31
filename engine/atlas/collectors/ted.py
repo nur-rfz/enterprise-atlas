@@ -120,7 +120,7 @@ def build_ted(store: Store, problem: Problem) -> dict:
                 buyers = [p["name"] for p in parties if "buyer" in (p.get("roles") or []) and p.get("name")]
                 winners = [p["name"] for p in parties if "supplier" in (p.get("roles") or []) and p.get("name")]
                 date = (n.get("date") or "")[:10]
-                url = f"https://oeffentlichevergabe.de/ui/de/search/details?noticeId={pub}"
+                url = n.get("url") or f"https://oeffentlichevergabe.de/ui/de/search/details?noticeId={pub}"
             else:
                 pub = _first(n.get("publication-number"))
                 title = _first(n.get("notice-title")) or ""
@@ -133,12 +133,15 @@ def build_ted(store: Store, problem: Problem) -> dict:
                 continue
             tid = f"tender:{slug(str(pub))}"
             hits = [h for h in topic_hits(problem, title) if h != "analytics"]
+            if re.search(r"instandsetzung|wartung|instandhaltung|repair|maintenance", title, re.I):
+                hits = sorted(set(hits) | {"after_sales"})
             store.upsert_entity(tid, NodeType.TENDER, title[:140] or str(pub),
                                 {"publication": pub, "date": date, "buyers": buyers, "winners": winners,
-                                 "problem_hits": hits, "url": url})
+                                 "problem_hits": hits, "url": url, "description": n.get("summary")})
+            provider = "TED (EU)" if raw["collector"] == "ted.search" else (n.get("provider") or "oeffentlichevergabe.de")
+            excerpt = n.get("summary") or f"Buyer: {', '.join(buyers) or '?'} · Winner/tenderer: {', '.join(winners) or '?'}"
             evid = store.put_evidence(url=url, title=title or str(pub), basis=Basis.PROCUREMENT_RECORD,
-                                      provider="TED" if raw["collector"] == "ted.search" else "oeffentlichevergabe.de",
-                                      excerpt=f"Buyer: {', '.join(buyers) or '?'} · Winner/tenderer: {', '.join(winners) or '?'}",
+                                      provider=provider, excerpt=excerpt,
                                       published_at=date or None, raw_document_id=raw["id"])
             for b in dict.fromkeys(buyers):
                 bid = _org(store, b)

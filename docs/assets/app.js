@@ -250,13 +250,13 @@ async function evidence() {
 
 /* ----------------------------------------------------------------- sources */
 async function sources() {
-  const s = await api("/api/sources");
+  const [s, ev] = await Promise.all([api("/api/sources"), api("/api/evidence")]);
+  const tenders = ev.filter((e) => e.basis === "procurement_record");
   const rows = [
     ["needle.people_search", "LinkedIn people (Needle)", "Org placement, titles, seniority. ~100 searches/day on a standard account."],
     ["web.page", "Web pages", "Event programmes, job ads, vendor case studies, associations."],
-    ["llm.extraction", "Claude extraction cache", "Structured claims extracted from fetched pages."],
-    ["ted.search", "TED EU tenders", "Buyers, winners, notices. Mercedes-Benz shows up mostly as a supplier."],
-    ["vergabe.ocds", "German procurement (OCDS)", "oeffentlichevergabe.de daily exports."],
+    ["ted.search", "TED EU tenders", "Buyers, winners, notices. Public fleets buying Mercedes-Benz vehicles and after-sales service."],
+    ["vergabe.ocds", "German procurement", "German public buyers' eForms notices (oeffentlichevergabe.de, mirrored on TED)."],
   ];
   $("#main").innerHTML = `
     <div class="eyebrow">Collectors</div>
@@ -265,13 +265,12 @@ async function sources() {
     <div class="tablewrap"><table><thead><tr><th>Collector</th><th>What it gives</th><th>Documents</th><th>Last run</th></tr></thead><tbody>
       ${rows.map(([k, n, d]) => `<tr><td><b>${n}</b><div class="mono muted">${k}</div></td><td>${d}</td><td class="mono">${s.collected[k]?.documents || 0}</td><td class="mono">${(s.collected[k]?.last || "—").slice(0, 16)}</td></tr>`).join("")}
     </tbody></table></div>
+    ${tenders.length ? `<h2 style="margin-top:28px">Procurement notices</h2>${tenders.map((t) => `<a class="signal" href="${esc(t.url)}" target="_blank" rel="noopener"><span class="tag basis">${esc(t.provider)}</span><div><b>${esc(t.title)}</b><small>${esc(t.excerpt)}</small></div><em>${esc(t.published_at || "")}</em></a>`).join("")}` : ""}
     <div class="actions" style="margin-top:18px">
-      <button class="btn dark" id="hn" ${s.configured.needle ? "" : "disabled title='Set NEEDLE_API_KEY'"}>Harvest LinkedIn via Needle</button>
+      <button class="btn dark" id="hn">Harvest LinkedIn via Needle</button>
       <button class="btn" id="iu">Ingest URLs…</button>
       <button class="btn" id="rb">Rebuild graph</button>
     </div>
-    ${s.configured.needle ? "" : '<div class="note">NEEDLE_API_KEY is not set on the server, so live LinkedIn harvesting is off. Existing harvests are still shown.</div>'}
-    ${s.configured.anthropic ? "" : '<div class="note">ANTHROPIC_API_KEY is not set, so fetched pages are stored but not yet turned into claims.</div>'}
     <pre id="out" class="mono muted"></pre>`;
   const out = (x) => ($("#out").textContent = JSON.stringify(x, null, 2));
   $("#rb").onclick = async () => out(await api("/api/rebuild", { method: "POST" }));

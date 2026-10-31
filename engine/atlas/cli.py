@@ -54,7 +54,9 @@ def main(argv: list[str] | None = None) -> None:
             for line in Path(f).read_text().splitlines():
                 if line.strip():
                     rec = json.loads(line)
-                    if rec.get("kind") in ("people", "jobs", "job", "profile", "company"):
+                    if rec.get("kind") in ("ted", "vergabe"):
+                        store.put_raw("ted.search" if rec["kind"] == "ted" else "vergabe.ocds", rec["request"], rec["payload"])
+                    elif rec.get("kind") in ("people", "jobs", "job", "profile", "company"):
                         import_mcp_response(store, rec["kind"], rec["label"], rec["params"], rec["payload"], rec.get("page", 0))
                     else:
                         from .collectors.web import import_web_record

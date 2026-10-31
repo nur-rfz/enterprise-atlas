@@ -93,23 +93,26 @@ after each rebuild.
 
 ## How the engine reasons
 
-1. **Placement.** A headline like *"Director of Service & Parts Business and Warranty & Goodwill Mercedes-Benz Cars bei Mercedes-Benz AG"*
-   becomes `seniority=director`, `function=after_sales`, `team=warranty`, `unit=Mercedes-Benz Cars`.
-   Teams and functions are created on the fly. Their `BELONGS_TO` edges gain confidence as independent profiles corroborate them.
-2. **Hygiene.**
-   * "Daimler AG" employers and truck/bus titles are flagged as stale. Daimler Truck has been a separate company since 2021.
-   * People whose headline names another employer are treated as **alumni**, an introduction route, not as Mercedes staff.
-   * "…consultant to Mercedes-Benz" headlines become **partners**.
-3. **Buying roles** come only from domain plus seniority, never seniority alone:
-   * Director in warranty → sponsor *hypothesis*.
-   * Data/AI lead embedded in after-sales → evaluator.
-   * IT architect serving the domain → technical approver.
-   * IT/software category manager → procurement.
-   * Assistant to after-sales leadership → introducer.
-   * Public talk on the topic → champion.
-4. **Hidden-intelligence layer.** Job ads, event programmes, vendor case studies, associations and tenders
-   add facts LinkedIn does not have. Example: a job ad places the *After-Sales Data, AI & Analytics* team inside
-   *IT After-Sales* and names Databricks and AWS.
+Short version:
+1. Headlines become org placement.
+2. Hygiene rules handle stale, alumni, partner and duplicate profiles.
+3. Buying roles come from domain plus seniority, never seniority alone.
+4. Job ads, events, vendor case studies, associations and tenders add the facts LinkedIn lacks.
+
+**Full deep dive: [`ENGINE.md`](ENGINE.md)** covers the ontology, the store, basis ceilings and confidence
+math, the parser, every role rule with its confidence, the ranking formula, entry paths, and the
+hidden-intelligence layer, all with live Mercedes-Benz examples. The UI's *How it works* view shows the same
+material computed from your data.
+
+## Present it
+
+```bash
+skills/enterprise-atlas/scripts/atlas.sh import ../data/needle/*.jsonl ../data/web/*.jsonl
+skills/enterprise-atlas/scripts/atlas.sh serve        # http://localhost:8787
+```
+
+For a static build with real names, for private presentation only, run
+`atlas.sh export-site /tmp/atlas-site --no-redact`, then serve it with `python3 -m http.server -d /tmp/atlas-site`.
 
 ## Data limits to know
 

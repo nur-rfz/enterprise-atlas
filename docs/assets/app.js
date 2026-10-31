@@ -45,12 +45,14 @@ const UNIT = (id) => (id || "").replace(/^(bu|org):/, "").replace(/-/g, " ");
 const initials = (s) => s.replace(/\(.*?\)/g, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 
 let META = null;
-const views = { map, overview, buying, paths, org, graph, evidence, sources };
+const views = { map, overview, buying, paths, org, graph, evidence, sources, how };
 
 async function boot() {
   try { if (window.ATLAS_STATIC) throw 0; META = await liveApi("/api/meta"); }
   catch { SNAP = await (await fetch("snapshot.json")).json(); META = SNAP["/api/meta"]; document.body.classList.add("static"); }
   $("#company").textContent = META.company;
+  if (SNAP) $("#liveTxt").textContent = "Snapshot · " + (SNAP.generated_at || "").slice(0, 10);
+  document.addEventListener("keydown", (e) => { if (e.key === "/" && document.activeElement !== $("#q")) { e.preventDefault(); $("#q").focus(); } if (e.key === "Escape") closeDrawer(); });
   $("#problem").textContent = META.problem.label;
   document.querySelectorAll(".side a").forEach((a) => a.addEventListener("click", () => go(a.dataset.view)));
   $("#drawerClose").onclick = closeDrawer;
@@ -66,6 +68,7 @@ function go(view) {
 function render(view) {
   if (!views[view]) view = "map";
   closeDrawer();
+  if (window.__heroStop) window.__heroStop();
   document.querySelectorAll(".side a").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
   $("#main").innerHTML = '<div class="empty">Loading…</div>';
   views[view]();
@@ -129,7 +132,7 @@ function personRow(p) {
       <div class="tt">${esc(hidden ? "Name hidden on LinkedIn · " + UNIT(p.unit) : p.title || "")}${!hidden && p.unit ? " · " + esc(UNIT(p.unit)) : ""}</div></div>
     <span class="score ${s >= 70 ? "hi" : ""}">${s}</span></div>`;
 }
-const bindPeople = () => document.querySelectorAll("[data-id]").forEach((el) => (el.onclick = (e) => { e.stopPropagation(); openEntity(el.dataset.id); }));
+const bindPeople = () => document.querySelectorAll("[data-id]").forEach((el) => { if (el.dataset.id) el.onclick = (e) => { e.stopPropagation(); openEntity(el.dataset.id); }; });
 
 /* ------------------------------------------------------------------ buying */
 async function buying() {
@@ -174,7 +177,7 @@ function treeNode(t, depth) {
 
 /* ------------------------------------------------------------------- graph */
 let cy = null;
-const NODE_COLORS = { Company: "#111111", BusinessUnit: "#3d3d3a", Function: "#76746d", Team: "#a8a59c", Person: "#1f3dff", Topic: "#c2255c", Technology: "#0b7285", Partner: "#b4532a", Event: "#7a3cff", Tender: "#5c6b00", Project: "#0f7b4a", Role: "#999" };
+const NODE_COLORS = { Company: "#ffffff", BusinessUnit: "#a9b8ff", Function: "#6f7fd6", Team: "#45d4a0", Person: "#7c94ff", Topic: "#ff6f9d", Technology: "#4cc9e6", Partner: "#ff9a62", Event: "#c18bff", Tender: "#d6dd6a", Project: "#45d4a0", Role: "#8b93a5" };
 async function graph() {
   const state = { layers: new Set(["organization", "buying_center", "ecosystem"]), min: 0.3 };
   $("#main").innerHTML = `
@@ -196,14 +199,15 @@ async function graph() {
         ...g.edges.map((e) => ({ data: { ...e, w: 0.5 + 2.5 * e.confidence } })),
       ],
       style: [
-        { selector: "node", style: { "background-color": "data(color)", width: "data(size)", height: "data(size)", label: "data(label)", "font-size": 9, "font-family": "Inter", color: "#3d3d3a", "text-valign": "bottom", "text-margin-y": 4, "text-max-width": 120, "text-wrap": "ellipsis" } },
-        { selector: "node[type='Person']", style: { label: "" } },
-        { selector: "node:selected, node.hl", style: { "border-width": 3, "border-color": "#111", label: "data(label)" } },
-        { selector: "edge", style: { width: "data(w)", "line-color": "#d9d6cc", "curve-style": "bezier", "target-arrow-shape": "triangle", "target-arrow-color": "#d9d6cc", "arrow-scale": 0.6 } },
-        { selector: "edge[status='confirmed']", style: { "line-color": "#9fc9b3", "target-arrow-color": "#9fc9b3" } },
+        { selector: "node", style: { "background-color": "data(color)", width: "data(size)", height: "data(size)", label: "data(label)", "font-size": 9, "font-family": "Geist, system-ui, sans-serif", color: "#b9c0cf", "text-valign": "bottom", "text-margin-y": 4, "text-max-width": 120, "text-wrap": "ellipsis", "border-width": 0 } },
+        { selector: "node[type='Person']", style: { label: "", "background-opacity": 0.85 } },
+        { selector: "node[type='Company']", style: { "font-size": 12, "font-weight": 600, color: "#ffffff", "border-width": 6, "border-color": "#7c94ff", "border-opacity": 0.25 } },
+        { selector: "node:selected, node.hl", style: { "border-width": 3, "border-color": "#ffffff", label: "data(label)", color: "#ffffff", "z-index": 10 } },
+        { selector: "edge", style: { width: "data(w)", "line-color": "#2b3346", "curve-style": "bezier", "target-arrow-shape": "triangle", "target-arrow-color": "#2b3346", "arrow-scale": 0.6, opacity: 0.9 } },
+        { selector: "edge[status='confirmed']", style: { "line-color": "#2c7a60", "target-arrow-color": "#2c7a60" } },
         { selector: "edge[status='inferred']", style: { "line-style": "dashed" } },
-        { selector: "edge[status='uncertain']", style: { "line-style": "dotted" } },
-        { selector: "edge[layer='buying_center']", style: { "line-color": "#c9cff9", "target-arrow-color": "#c9cff9" } },
+        { selector: "edge[status='uncertain']", style: { "line-style": "dotted", opacity: 0.6 } },
+        { selector: "edge[layer='buying_center']", style: { "line-color": "#4a4f9a", "target-arrow-color": "#4a4f9a" } },
       ],
       layout: { name: "cose", animate: false, nodeRepulsion: 9000, idealEdgeLength: 70, padding: 20 },
       wheelSensitivity: 0.2,
@@ -239,7 +243,7 @@ async function evidence() {
     <h1>Evidence</h1>
     <p class="sub">Every claim in the graph points to one of these. Licensed LinkedIn data is marked; search summaries are flagged as non-verbatim until the page is fetched.</p>
     <div class="filters" id="ef"><button class="chip on" data-b="">All · ${rows.length}</button>${bases.map((b) => `<button class="chip" data-b="${b}">${esc(BASIS[b] || b)} · ${rows.filter((r) => r.basis === b).length}</button>`).join("")}</div>
-    <table><thead><tr><th>Basis</th><th>Source</th><th>Provider</th><th>Observed</th><th>Claims</th></tr></thead><tbody id="evt"></tbody></table>`;
+    <div class="tablewrap"><table><thead><tr><th>Basis</th><th>Source</th><th>Provider</th><th>Observed</th><th>Claims</th></tr></thead><tbody id="evt"></tbody></table></div>`;
   $("#ef").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; filter = b.dataset.b || null; document.querySelectorAll("#ef .chip").forEach((x) => x.classList.toggle("on", x === b)); render(); };
   render();
 }
@@ -258,9 +262,9 @@ async function sources() {
     <div class="eyebrow">Collectors</div>
     <h1>Sources</h1>
     <p class="sub">Raw responses are stored verbatim. The graph is rebuilt deterministically from them, so improving a parser upgrades every past harvest.</p>
-    <table><thead><tr><th>Collector</th><th>What it gives</th><th>Documents</th><th>Last run</th></tr></thead><tbody>
+    <div class="tablewrap"><table><thead><tr><th>Collector</th><th>What it gives</th><th>Documents</th><th>Last run</th></tr></thead><tbody>
       ${rows.map(([k, n, d]) => `<tr><td><b>${n}</b><div class="mono muted">${k}</div></td><td>${d}</td><td class="mono">${s.collected[k]?.documents || 0}</td><td class="mono">${(s.collected[k]?.last || "—").slice(0, 16)}</td></tr>`).join("")}
-    </tbody></table>
+    </tbody></table></div>
     <div class="actions" style="margin-top:18px">
       <button class="btn dark" id="hn" ${s.configured.needle ? "" : "disabled title='Set NEEDLE_API_KEY'"}>Harvest LinkedIn via Needle</button>
       <button class="btn" id="iu">Ingest URLs…</button>
@@ -312,15 +316,17 @@ async function map() {
 
   $("#main").innerHTML = `
     <div class="hero">
+      <canvas id="heroCanvas" aria-hidden="true"></canvas>
       <div>
         <div class="eyebrow">Decision map · ${esc(META.company)}</div>
-        <h1>Who actually decides on <em>${esc(META.problem.label.toLowerCase())}</em></h1>
-        <p class="sub">Not the org chart, but the buying center around one problem. Built from ${META.stats.entities.Person || 0} real people and ${Object.values(META.stats.evidence || {}).reduce((a, b) => a + b, 0)} sourced evidence items. Every line carries a source, a date and a confidence.</p>
+        <h1>Who actually decides on <em>${esc(META.problem.label.toLowerCase())}</em> at ${esc(META.company.replace(/ Group$/, ""))}</h1>
+        <p class="sub">The buying center around one problem, not the org chart. Built from LinkedIn, job ads, conference programmes and vendor case studies. Every line carries a source, a date and a confidence.</p>
       </div>
       <div class="hero-stats">
-        <div><b>${META.stats.entities.Person || 0}</b><span>people placed</span></div>
-        <div><b>${(META.stats.entities.Team || 0) + (META.stats.entities.Function || 0)}</b><span>teams found</span></div>
-        <div><b>${signals.length}</b><span>hidden signals</span></div>
+        <div><b data-count="${META.stats.entities.Person || 0}">0</b><span>people placed</span></div>
+        <div><b data-count="${(META.stats.entities.Team || 0) + (META.stats.entities.Function || 0)}">0</b><span>teams found</span></div>
+        <div><b data-count="${Object.values(META.stats.assertions || {}).reduce((a, b) => a + b, 0)}">0</b><span>sourced claims</span></div>
+        <div><b data-count="${signals.length}">0</b><span>hidden signals</span></div>
       </div>
     </div>
     <div class="dmap" id="dmap">
@@ -345,12 +351,57 @@ async function map() {
       <div><h2>Hidden signals <span class="muted">· beyond LinkedIn</span></h2>${signals.slice(0, 8).map(signalRow).join("")}</div>
     </div>`;
   bindPeople();
-  requestAnimationFrame(drawWires);
-  window.onresize = () => $("#wires") && drawWires();
+  requestAnimationFrame(() => { drawWires(true); });
+  window.onresize = () => $("#wires") && drawWires(false);
+  startContours($("#heroCanvas"));
+  document.querySelectorAll("[data-count]").forEach(countUp);
 }
 
-function drawWires() {
+function countUp(el) {
+  const end = +el.dataset.count, t0 = performance.now(), dur = 900;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { el.textContent = end; return; }
+  const tick = (t) => { const k = Math.min(1, (t - t0) / dur); el.textContent = Math.round(end * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+}
+
+/* Topographic contour field behind the hero: marching squares over a slow-moving scalar field. */
+function startContours(cv) {
+  if (!cv) return;
+  const ctx = cv.getContext("2d"), still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let raf, t = 7;
+  const field = (x, y, t) => Math.sin(x * 0.011 + t * 0.21) + Math.cos(y * 0.017 - t * 0.17) + Math.sin((x + y) * 0.006 + t * 0.11) * 1.3 + Math.cos(Math.hypot(x - cv.width * 0.72, y - cv.height * 0.45) * 0.012 - t * 0.3) * 1.1;
+  const draw = () => {
+    const dpr = Math.min(2, devicePixelRatio || 1), W = cv.clientWidth, H = cv.clientHeight;
+    if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    const step = 12, cols = Math.ceil(W / step) + 1, rows = Math.ceil(H / step) + 1, v = new Float32Array(cols * rows);
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) v[j * cols + i] = field(i * step, j * step, t);
+    for (let L = -3.2, k = 0; L <= 3.2; L += 0.4, k++) {
+      ctx.beginPath();
+      ctx.strokeStyle = k % 4 === 0 ? "rgba(124,148,255,.30)" : "rgba(124,148,255,.11)";
+      ctx.lineWidth = k % 4 === 0 ? 1.1 : 0.8;
+      for (let j = 0; j < rows - 1; j++) for (let i = 0; i < cols - 1; i++) {
+        const a = v[j * cols + i], b = v[j * cols + i + 1], c = v[(j + 1) * cols + i + 1], d = v[(j + 1) * cols + i];
+        const idx = (a > L) | ((b > L) << 1) | ((c > L) << 2) | ((d > L) << 3);
+        if (idx === 0 || idx === 15) continue;
+        const x = i * step, y = j * step, lerp = (p, q) => (L - p) / (q - p);
+        const pts = { T: [x + step * lerp(a, b), y], R: [x + step, y + step * lerp(b, c)], B: [x + step * lerp(d, c), y + step], Lf: [x, y + step * lerp(a, d)] };
+        const segs = { 1: ["Lf", "T"], 2: ["T", "R"], 3: ["Lf", "R"], 4: ["R", "B"], 6: ["T", "B"], 7: ["Lf", "B"], 8: ["B", "Lf"], 9: ["B", "T"], 11: ["B", "R"], 12: ["R", "Lf"], 13: ["R", "T"], 14: ["T", "Lf"] };
+        const add = (p, q) => { ctx.moveTo(...pts[p]); ctx.lineTo(...pts[q]); };
+        if (idx === 5) { add("Lf", "T"); add("R", "B"); } else if (idx === 10) { add("T", "R"); add("B", "Lf"); } else if (segs[idx]) add(...segs[idx]);
+      }
+      ctx.stroke();
+    }
+    t += 0.008;
+    if (!still) raf = requestAnimationFrame(draw);
+  };
+  draw();
+  window.__heroStop = () => cancelAnimationFrame(raf);
+}
+
+function drawWires(animate) {
   const box = $("#dmap"), svg = $("#wires");
+  if (svg) svg.classList.toggle("anim", !!animate);
   if (!box || !svg) return;
   const b = box.getBoundingClientRect();
   svg.setAttribute("width", b.width); svg.setAttribute("height", b.height);
@@ -384,6 +435,104 @@ async function paths() {
     <p class="sub">Four ways into the buying center. Each step is a real, ranked person with the evidence for their role. Pick the route that matches your proof points.</p>
     <div class="paths-grid">${ps.map(pathCard).join("")}</div>
     <h2 style="margin-top:28px">All hidden signals</h2>${signals.map(signalRow).join("")}`;
+  bindPeople();
+}
+
+/* ------------------------------------------------------------- how it works */
+const LAYER_COPY = {
+  organization: ["Organizational graph", "Who belongs where: company, business unit, function, team, person.", "var(--accent)"],
+  buying_center: ["Buying-center graph", "Who owns the problem, sponsors, evaluates, approves, procures, introduces.", "var(--r-eval)"],
+  ecosystem: ["Ecosystem", "Partners, vendors, events, tenders, technologies around the account.", "var(--r-proc)"],
+};
+const RULES = [
+  ["Director+ inside a problem-owning function", "business_sponsor", "0.50–0.55", "Seniority counts only inside the domain. A VP Marketing never qualifies."],
+  ["Manager / team lead inside the domain", "problem_owner", "0.50–0.58", "Runs the process that has the pain."],
+  ["Data / AI role embedded in the domain", "evaluator", "0.45–0.58", "Would run the pilot and assess the tool."],
+  ["IT architect or IT lead serving the domain", "technical_approver", "0.30–0.45", "Integration sign-off is plausible, never assumed."],
+  ["IT / software category manager", "procurement", "0.35–0.50", "Controls the vendor process, not the need."],
+  ["Public talk or contribution on the topic", "champion", "0.50", "From event programmes and publications."],
+  ["Assistant to domain leadership, partner on the account, alumni", "introducer", "0.30–0.45", "Warm routes in without a cold approach."],
+  ["Individual contributor inside the domain", "user", "0.50", "Works with the data every day."],
+];
+
+async function how() {
+  const [X, committee] = await Promise.all([api("/api/explain"), api("/api/committee?limit=25")]);
+  const n = (o) => Object.values(o || {}).reduce((a, b) => a + b, 0);
+  const c = X.counts;
+  const tok = (k, label, val) => `<span class="tok k-${k}">${label} <b>${esc(val)}</b></span>`;
+  const ce = X.confidence_example;
+  const top = (r) => (committee[r]?.top || []).slice().sort((a, b) => b.confidence * b.score - a.confidence * a.score)[0];
+  $("#main").innerHTML = `<div class="how">
+    <div class="eyebrow">Under the hood</div>
+    <h1>How Atlas builds the decision map</h1>
+    <p class="sub">A typed ontology, a provenance rule for every claim, and a reasoning layer that turns where people sit and what they publicly work on into buying-role hypotheses. Every example below is computed live from the Mercedes-Benz build.</p>
+
+    <section><div class="lede"><span class="step">Pipeline</span><h2>Raw documents in, decisions out</h2>
+      <p>Collectors store every response verbatim. The graph is a deterministic replay of those documents, so a better parser upgrades every past harvest.</p></div>
+      <div class="body"><div class="pipeline">
+        <div class="pipe"><b>Collect</b><small>Needle LinkedIn, job ads, events, vendors, tenders</small><span class="num">${n(c.raw_documents)}</span><small>raw documents</small></div>
+        <div class="pipe"><b>Evidence</b><small>Citable URL + locator + basis</small><span class="num">${n(c.evidence)}</span><small>evidence items</small></div>
+        <div class="pipe"><b>Entities</b><small>Typed nodes, resolved by alias</small><span class="num">${n(c.entities)}</span><small>entities</small></div>
+        <div class="pipe"><b>Claims</b><small>One claim, one source, one date</small><span class="num">${n(c.assertions)}</span><small>assertions</small></div>
+        <div class="pipe"><b>Edges</b><small>Claims aggregated with caps</small><span class="num">${X.edge_types.length}</span><small>relationship types</small></div>
+        <div class="pipe"><b>Decisions</b><small>Roles, ranking, entry paths</small><span class="num">${X.role_weights ? Object.keys(X.role_weights).length : 8}</span><small>buying roles</small></div>
+      </div></div></section>
+
+    <section><div class="lede"><span class="step">01 · Ontology</span><h2>Two graphs, one store</h2>
+      <p>The organizational graph says who belongs where. The buying-center graph says who matters for one problem. They overlap but differ, because purchasing influence does not follow the reporting line.</p>
+      <p>${X.node_types.length} node types, ${X.edge_types.length} typed relationships.</p></div>
+      <div class="body"><div class="layers">${Object.entries(LAYER_COPY).map(([k, [t, d, col]]) => `<div class="layer"><h3><i style="background:${col}"></i>${t}</h3><p>${d}</p>${X.edge_types.filter((e) => e.layer === k).map((e) => `<span class="tok">${e.type}</span>`).join(" ")}</div>`).join("")}</div>
+      <div class="tokens">${X.node_types.map((t) => `<span class="tok">${t}</span>`).join("")}</div></div></section>
+
+    <section><div class="lede"><span class="step">02 · Provenance</span><h2>Every claim has a basis, and each basis has a ceiling</h2>
+      <p>A claim records its source, observation date, confidence and basis. Each basis can only establish certain relationships. A conference talk proves <b>SPOKE_ABOUT</b>; if anyone, human or LLM, uses it to claim budget ownership, the claim is capped at ${X.unsupported_ceiling} and marked uncertain.</p></div>
+      <div class="body"><div class="card">${X.bases.map((b) => `<div class="ceil"><span>${esc(BASIS[b.basis] || b.basis)}</span><div class="track"><div class="fill" style="width:${b.ceiling * 100}%"></div></div><span class="mono">${b.ceiling.toFixed(2)}</span><small>${b.establishes.length ? "establishes " + b.establishes.join(" · ") : "hypotheses only (always inferred)"}</small></div>`).join("")}</div>
+      <div class="formula">edge confidence = <b>noisy-OR</b> over independent sources   1 − Π(1 − cᵢ), one vote per source URL
+weak claims only    = min(noisy-OR, ${X.unsupported_ceiling} + 0.08 × (n − 1), 0.80)   → "inferred" once n ≥ 3
+heuristic only      = min(noisy-OR, 0.60)   → always "inferred"</div>
+      ${ce ? `<div class="parse"><div class="who"><span>Live example</span><span class="status ${ce.status}">${ce.status} ${Math.round(ce.confidence * 100)}%</span></div>
+        <div class="hl">${esc(ce.src)} <span class="muted">—${ce.type}→</span> ${esc(ce.dst)}</div>
+        <div class="fine">${ce.n} employee headlines each place this function in this unit at ${ce.each[0]} (a headline alone cannot prove structure). Corroborated by independent profiles, it rises to ${Math.round(ce.confidence * 100)}% and stays below confirmed until an official source says so.</div></div>` : ""}</div></section>
+
+    <section><div class="lede"><span class="step">03 · Placement</span><h2>Headlines become org structure</h2>
+      <p>An English and German parser reads each self-reported headline: seniority, function, sub-team, business unit, employer. Teams and functions are created on the fly and placed under their unit. Click any example to open the person.</p></div>
+      <div class="body">${X.placement.map((p) => `<div class="parse">
+        <div class="who" data-id="${esc(p.person?.id || "")}"><b>${esc(p.person?.label || "")}</b><span class="mono">${p.person?.score ? "rank " + p.person.score : ""}</span></div>
+        <div class="hl">“${esc(p.headline)}”</div>
+        <div class="tokens">${tok("seniority", "seniority", p.seniority)}${p.functions.map((f) => tok("function", "function", f.replace(/_/g, " "))).join("")}${p.subfunctions.map((f) => tok("team", "team", f.replace(/_/g, " "))).join("")}${p.units.map((u) => tok("unit", "unit", UNIT(u))).join("")}${p.employer ? tok("employer", "employer", p.employer) : ""}${p.topics.length ? tok("topic", "topics", p.topics.join(", ")) : ""}${p.roles.map((r) => `<span class="tok k-role" style="background:${ROLES[r.role].color}">${ROLES[r.role].label} ${Math.round(r.confidence * 100)}%</span>`).join("")}</div></div>`).join("")}</div></section>
+
+    <section><div class="lede"><span class="step">04 · Hygiene</span><h2>Cleaning what LinkedIn gets wrong</h2>
+      <p><b>Stale:</b> "Daimler AG" employers and truck or bus titles. Daimler Truck has been a separate company since 2021.</p>
+      <p><b>Alumni:</b> a company-scoped search returns someone whose headline names another employer. That is an introduction route, not staff.</p>
+      <p><b>Partner:</b> "…consultant to Mercedes-Benz" becomes a partner on the account.</p>
+      <p><b>Merged:</b> the same member appears named in one search and as "LinkedIn Member" in another; identical headline and location are merged.</p></div>
+      <div class="body"><div class="hyg">${X.hygiene.map((h) => `<div data-id="${esc(h.id)}"><span class="k ${h.kind}">${h.kind}</span><b>${esc(h.label)}</b><small>${esc(h.headline || "")}</small><small style="margin-top:6px">${esc(h.note)}</small></div>`).join("")}</div></div></section>
+
+    <section><div class="lede"><span class="step">05 · Buying roles</span><h2>Domain plus seniority, never seniority alone</h2>
+      <p>Roles are hypotheses stored with basis "heuristic", so they are capped and always marked inferred. The rationale string records exactly which signals fired.</p></div>
+      <div class="body"><div class="tablewrap"><table class="ruletab"><thead><tr><th>Signal</th><th>Role</th><th>Confidence</th><th>Top candidate now</th></tr></thead><tbody>
+        ${RULES.map(([sig, r, conf, why]) => { const p = top(r); return `<tr><td>${esc(sig)}<div class="fine">${esc(why)}</div></td><td><span class="tag rtag" style="background:${ROLES[r].color}">${ROLES[r].label}</span></td><td class="mono">${conf}</td><td>${p ? `<a data-id="${esc(p.id)}" style="cursor:pointer">${esc(p.name_visible === false ? p.title : p.label)}</a><div class="fine">${esc((p.title || "").slice(0, 70))}</div>` : '<span class="muted">none yet</span>'}</td></tr>`; }).join("")}
+      </tbody></table></div></div></section>
+
+    <section><div class="lede"><span class="step">06 · Ranking</span><h2>An explainable score, not a black box</h2>
+      <p>Each person gets one score built from four visible components. The drawer shows the breakdown for anyone you open.</p></div>
+      <div class="body"><div class="formula">score = 100 × ( <b>0.40</b> · problem fit       topic words + owning sub-team + owning function
+              + <b>0.30</b> · role strength     max(role weight × confidence)
+              + <b>0.15</b> · evidence          independent sources + public activity
+              + <b>0.15</b> · reachability      network degree (${Object.entries(X.reachability).filter(([k]) => k !== "None").map(([k, v]) => k.replace(/_/g, " ") + " " + v).join(", ")}) )
+
+role weights  ${Object.entries(X.role_weights).map(([k, v]) => k.replace(/_/g, " ") + " " + v).join(" · ")}</div></div></section>
+
+    <section><div class="lede"><span class="step">07 · Hidden intelligence</span><h2>What LinkedIn cannot tell you</h2>
+      <p>LinkedIn says where people sit. Job ads, event programmes, vendor case studies, associations and tenders say what they work on. These claims attach to the same teams the profiles created.</p></div>
+      <div class="body">${X.hidden.map((h) => `<a class="signal" href="${esc(h.url || "#")}" target="_blank" rel="noopener"><span class="tag basis">${esc(BASIS[h.basis] || h.basis)}</span>
+        <div><b>${esc(h.src)} <span class="muted">—${h.type}→</span> ${esc(h.dst)}</b><small>“${esc(h.quote)}”</small></div><em>${Math.round(h.confidence * 100)}%</em></a>`).join("")}</div></section>
+
+    <section><div class="lede"><span class="step">08 · Curation</span><h2>Analysts stay in control</h2>
+      <p>Reject a claim, merge two entities or add a sourced relationship from the drawer. Curation is stored apart from derived data and re-applied after every rebuild.</p></div>
+      <div class="body"><div class="formula">raw documents ──replay──▶ entities + claims ──apply merges & rejections──▶ graph
+analyst claims (basis "analyst") survive rebuilds · non-analyst claims always need a source URL</div></div></section>
+  </div>`;
   bindPeople();
 }
 

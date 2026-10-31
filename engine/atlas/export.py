@@ -50,7 +50,7 @@ def export_site(out_dir: str, redact: bool = True) -> dict:
     client = TestClient(app)
     get = lambda p: client.get(p).json()
     snap = {p: get(p) for p in ("/api/meta", "/api/org", "/api/people", "/api/evidence", "/api/sources",
-                                "/api/paths", "/api/signals")}
+                                "/api/paths", "/api/signals", "/api/explain")}
     snap["/api/committee"] = get("/api/committee?limit=50")
     snap["/api/graph"] = get("/api/graph")
     s = store()
@@ -59,6 +59,8 @@ def export_site(out_dir: str, redact: bool = True) -> dict:
     snap["search"] = [{"id": e["id"], "type": e["type"], "label": e["label"], "headline": e["props"].get("headline")}
                       for e in ents]
     snap["/api/sources"]["configured"] = {"needle": False, "anthropic": False}
+    from .store import now_iso
+    snap["generated_at"] = now_iso()
 
     text = json.dumps(snap, ensure_ascii=False, default=str)
     n = 0

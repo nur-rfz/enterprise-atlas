@@ -17,7 +17,7 @@ from .builders import build_all
 from .cli import DEFAULT_DB
 from .ontology import Basis, BuyingRole, EdgeType, NodeType
 from .problems import PROBLEMS
-from .report import buying_committee, entry_paths, org_tree, ranked_people, signals
+from .report import buying_committee, entry_paths, explain, org_tree, ranked_people, signals
 from .store import Store, slug
 from .targets import TARGET as T
 
@@ -79,6 +79,11 @@ def committee(limit: int = 12):
 @app.get("/api/paths")
 def paths():
     return entry_paths(store(), PROBLEM)
+
+
+@app.get("/api/explain")
+def get_explain():
+    return explain(store(), PROBLEM)
 
 
 @app.get("/api/signals")

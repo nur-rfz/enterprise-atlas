@@ -81,7 +81,7 @@ def infer_roles(tp: TitleParse, problem: Problem) -> list[RoleHypothesis]:
                                       f"External delivery role inside the problem domain ({where})."))
         return out
 
-    if domain:
+    if domain and "procurement" not in fn:
         if rank >= 4:
             out.append(RoleHypothesis(BuyingRole.BUSINESS_SPONSOR, 0.5 + 0.05 * bool(domain_sub),
                                       f"Director-level or above in a problem-owning function ({where}). Budget ownership is not verified."))
@@ -113,7 +113,7 @@ def infer_roles(tp: TitleParse, problem: Problem) -> list[RoleHypothesis]:
                                   "; integration sign-off is plausible, not verified."))
 
     if "procurement" in fn:
-        boost = 0.15 if "it_procurement" in sub else 0.0
+        boost = 0.15 if ("it_procurement" in sub or domain) else 0.0
         out.append(RoleHypothesis(BuyingRole.PROCUREMENT, 0.35 + boost,
                                   "Procurement role" + (" for IT/indirect services" if boost else "") +
                                   "; controls the vendor process, not the business need."))

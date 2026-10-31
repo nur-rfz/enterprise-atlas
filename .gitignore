@@ -52,3 +52,7 @@ data/*.sqlite
 data/needle/
 data/web/
 .env
+
+# Published snapshot contains harvested (redacted) personal data: generate locally,
+# publish only after review (see README).
+docs/snapshot.json

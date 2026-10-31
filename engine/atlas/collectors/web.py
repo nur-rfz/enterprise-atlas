@@ -18,7 +18,8 @@ from ..extract import Extraction, available, extract_page
 from ..ontology import Basis, EdgeType, NodeType
 from ..problems import Problem
 from ..store import Store, normalize, short_hash, slug
-from ..targets import mercedes as T
+from ..targets import TARGET as T
+from ..titles import _match_any
 
 UA = "EnterpriseAtlas/0.2 (+research; contact: repository owner)"
 VENDOR_HINTS = ("customers", "case-stud", "cases", "customer-stor", "success-stor", "referenz")
@@ -100,7 +101,7 @@ def resolve(store: Store, ent: dict) -> str:
             hits = store.find_by_alias(name, ot)
             if hits:
                 return hits[0]["id"]
-        if re.search(r"mercedes|daimler ag", normalize(name)):
+        if _match_any(T.EMPLOYER_PATTERNS, normalize(name)):
             return T.COMPANY_ID
         return f"{'partner' if t == NodeType.PARTNER else 'org'}:{slug(name)}"
     if t in (NodeType.TEAM, NodeType.FUNCTION, NodeType.TECHNOLOGY, NodeType.TOPIC, NodeType.EVENT, NodeType.PROJECT):

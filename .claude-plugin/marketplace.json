@@ -1,0 +1,11 @@
+{
+  "name": "enterprise-atlas",
+  "owner": { "name": "nur-rfz" },
+  "plugins": [
+    {
+      "name": "enterprise-atlas",
+      "source": "./",
+      "description": "Evidence-backed buying-center maps for enterprise accounts (org graph + decision graph, every edge sourced)."
+    }
+  ]
+}

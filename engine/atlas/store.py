@@ -275,14 +275,16 @@ class Store:
 
     def edges(self, where: str = "1=1", params: tuple = ()) -> list[Edge]:
         groups: dict[tuple[str, str, str], list[dict]] = {}
+        urls = {r[0]: r[1] for r in self.db.execute("SELECT id, url FROM evidence")}
         for a in self.assertions(where, params):
             groups.setdefault((a["src"], a["dst"], a["type"]), []).append(a)
         out: list[Edge] = []
         for (src, dst, t), items in groups.items():
-            # independent evidence only: one vote per evidence id
+            # independent evidence only: one vote per source URL (the same profile seen by
+            # three searches is still one source)
             by_ev: dict[str, float] = {}
             for a in items:
-                key = a["evidence_id"] or a["id"]
+                key = urls.get(a["evidence_id"]) or a["evidence_id"] or a["id"]
                 by_ev[key] = max(by_ev.get(key, 0.0), a["confidence"])
             conf = combine(list(by_ev.values()))
             statuses = {a["status"] for a in items}

@@ -8,6 +8,7 @@ from __future__ import annotations
 OBSERVED = "2026-10-31"
 
 COMPANY_ID = "org:mercedes-benz-group"
+COMPANY_NAME = "Mercedes-Benz Group"
 
 # LinkedIn company ids used to scope people / job searches (resolved through Needle).
 LINKEDIN_COMPANIES = {
@@ -67,6 +68,7 @@ UNITS = [
     ("bu:mbition", "BusinessUnit", "MBition", ["MBition GmbH"]),
     ("bu:mbti", "BusinessUnit", "Mercedes-Benz Tech Innovation", ["MBTI", "Mercedes-Benz Tech Innovation GmbH", "Daimler TSS"]),
     ("bu:mb-amg", "BusinessUnit", "Mercedes-AMG", ["AMG", "Mercedes-AMG GmbH"]),
+    ("bu:mb-markets", "BusinessUnit", "Mercedes-Benz national sales companies", ["Mercedes-Benz Schweiz AG", "Mercedes-Benz Österreich"]),
     ("bu:mb-os", "BusinessUnit", "MB.OS", ["MB.OS", "Mercedes-Benz Operating System"]),
     ("bu:mbrdi", "BusinessUnit", "Mercedes-Benz R&D India", ["MBRDI"]),
     ("bu:mbrdna", "BusinessUnit", "Mercedes-Benz R&D North America", ["MBRDNA"]),
@@ -90,7 +92,7 @@ STRUCTURE = [
 UNIT_PARENTS = {
     "bu:mb-cars": "bu:mb-ag", "bu:mb-vans": "bu:mb-ag", "bu:mb-os": "bu:mb-ag", "bu:mb-amg": "bu:mb-ag",
     "bu:mb-sales-de": "bu:mb-ag", "bu:mb-usa": "org:mercedes-benz-group", "bu:mbrdna": "org:mercedes-benz-group",
-    "bu:mbrdi": "org:mercedes-benz-group",
+    "bu:mbrdi": "org:mercedes-benz-group", "bu:mb-markets": "bu:mb-ag",
 }
 
 BOARD = [
@@ -114,6 +116,7 @@ UNIT_LEXICON: dict[str, list[str]] = {
     "bu:mbition": [r"mbition"],
     "bu:mbti": [r"tech innovation", r"mbti", r"daimler tss"],
     "bu:mb-os": [r"mb os"],
+    "bu:mb-markets": [r"mercedes benz (schweiz|oesterreich|osterreich|austria|france|italia|espana|uk|nederland|belgium|polska|japan|korea|india|china|south africa|australia|canada)\w*"],
     "bu:mbrdi": [r"mbrdi", r"r d india", r"research and development india"],
     "bu:mbrdna": [r"mbrdna", r"r d north america"],
     "bu:mb-usa": [r"mbusa", r"mercedes benz usa"],

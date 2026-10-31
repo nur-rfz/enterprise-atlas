@@ -2,11 +2,29 @@
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const api = async (path, opts) => {
+let SNAP = null; // static snapshot (GitHub Pages demo); null when a live API is available
+async function liveApi(path, opts) {
   const r = await fetch(path, opts && opts.body ? { method: "POST", headers: { "content-type": "application/json" }, ...opts, body: JSON.stringify(opts.body) } : opts);
   if (!r.ok) throw new Error((await r.text()) || r.status);
   return r.json();
-};
+}
+function snapApi(path, opts) {
+  if (opts && (opts.method === "POST" || opts.body)) throw new Error("This is a read-only published snapshot. Run the engine locally to curate and harvest.");
+  const [p, qs] = path.split("?");
+  const q = new URLSearchParams(qs || "");
+  if (p.startsWith("/api/entity/")) return structuredClone(SNAP.entities[decodeURIComponent(p.slice(12))]);
+  if (p === "/api/entities") { const t = (q.get("q") || "").toLowerCase(); return SNAP.search.filter((x) => !t || (x.label + " " + (x.headline || "")).toLowerCase().includes(t)).slice(0, +(q.get("limit") || 30)); }
+  if (p === "/api/graph") {
+    const min = +(q.get("min_confidence") || 0), L = q.get("layers") ? new Set(q.get("layers").split(",")) : null;
+    const edges = SNAP["/api/graph"].edges.filter((e) => e.confidence >= min && (!L || L.has(e.layer)));
+    const used = new Set(edges.flatMap((e) => [e.source, e.target]));
+    return { nodes: SNAP["/api/graph"].nodes.filter((n) => used.has(n.id)), edges };
+  }
+  if (p === "/api/committee") { const lim = +(q.get("limit") || 12), c = structuredClone(SNAP[p]); Object.values(c).forEach((b) => (b.top = b.top.slice(0, lim))); return c; }
+  if (p === "/api/people") return SNAP[p].slice(0, +(q.get("limit") || 200));
+  return structuredClone(SNAP[p]);
+}
+const api = async (path, opts) => (SNAP ? snapApi(path, opts) : liveApi(path, opts));
 
 const ROLES = {
   business_sponsor: { label: "Business sponsor", hint: "Owns the business outcome", color: "var(--r-sponsor)" },
@@ -27,15 +45,17 @@ const UNIT = (id) => (id || "").replace(/^(bu|org):/, "").replace(/-/g, " ");
 const initials = (s) => s.replace(/\(.*?\)/g, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 
 let META = null;
-const views = { overview, buying, org, graph, evidence, sources };
+const views = { map, overview, buying, paths, org, graph, evidence, sources };
 
 async function boot() {
-  META = await api("/api/meta");
+  try { if (window.ATLAS_STATIC) throw 0; META = await liveApi("/api/meta"); }
+  catch { SNAP = await (await fetch("snapshot.json")).json(); META = SNAP["/api/meta"]; document.body.classList.add("static"); }
+  $("#company").textContent = META.company;
   $("#problem").textContent = META.problem.label;
   document.querySelectorAll(".side a").forEach((a) => a.addEventListener("click", () => go(a.dataset.view)));
   $("#drawerClose").onclick = closeDrawer;
   setupSearch();
-  go(location.hash.slice(1) || "overview");
+  go(location.hash.slice(1) || "map");
 }
 
 window.addEventListener("hashchange", () => render(location.hash.slice(1)));
@@ -44,7 +64,7 @@ function go(view) {
   else render(view);
 }
 function render(view) {
-  if (!views[view]) view = "overview";
+  if (!views[view]) view = "map";
   closeDrawer();
   document.querySelectorAll(".side a").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
   $("#main").innerHTML = '<div class="empty">Loading…</div>';
@@ -255,6 +275,118 @@ async function sources() {
   $("#iu").onclick = () => form("Ingest URLs", [{ name: "urls", label: "One URL per line", textarea: true }], async (v) => out(await api("/api/ingest/urls", { body: { urls: v.urls.split(/\s+/).filter(Boolean) } })));
 }
 
+/* -------------------------------------------------------------- decision map */
+const ROLE_ORDER = ["business_sponsor", "problem_owner", "evaluator", "technical_approver", "procurement", "champion", "introducer"];
+const OWNER_FN = /after-sales|warranty|quality|field|customer service/i;
+
+async function map() {
+  const [tree, committee, paths, signals] = await Promise.all([api("/api/org"), api("/api/committee?limit=25"), api("/api/paths"), api("/api/signals")]);
+  // index the tree: parent links + role weight per subtree
+  const parent = {}, nodes = {};
+  const roleOf = {};
+  ROLE_ORDER.forEach((r) => committee[r].top.forEach((p) => { (roleOf[p.id] ||= []).push({ role: r, ...p }); }));
+  (function walk(n, par) { nodes[n.id] = n; if (par) parent[n.id] = par; n.children.forEach((c) => walk(c, n.id)); })(tree, null);
+  const weight = (n) => (n.type === "Person" ? (roleOf[n.id] || []).reduce((a, r) => a + r.confidence * (r.score || 0) / 100, 0) : n.children.reduce((a, c) => a + weight(c), 0));
+  const unitsOf = (n) => n.children.filter((c) => c.type === "BusinessUnit" || c.type === "Company");
+  const allUnits = [];
+  (function collect(n) { unitsOf(n).forEach((u) => { allUnits.push(u); collect(u); }); })(tree);
+  allUnits.forEach((u) => (u.w = weight(u)));
+  allUnits.sort((a, b) => b.w - a.w);
+  const units = allUnits.filter((u) => u.headcount > 0).slice(0, 7);
+  const maxW = Math.max(...units.map((u) => u.w), 0.01);
+  // target teams: functions/teams in the problem domain, ranked by weight
+  const teams = [];
+  (function collectTeams(n) { n.children.forEach((c) => { if (c.type === "Function" || c.type === "Team") { c.w = weight(c); if (c.w > 0 && (OWNER_FN.test(c.label) || c.type === "Team")) teams.push(c); } if (c.type !== "Person") collectTeams(c); }); })(tree);
+  teams.sort((a, b) => b.w - a.w);
+  const shownTeams = teams.filter((t) => !(t.type === "Function" && teams.some((x) => x !== t && parent[x.id] === t.id && x.w >= t.w * 0.6))).slice(0, 8);
+  const unitOfNode = (id) => { let x = id; while (x && nodes[x] && nodes[x].type !== "BusinessUnit" && nodes[x].type !== "Company") x = parent[x]; return x; };
+  const teamOfPerson = (id) => { let x = parent[id]; while (x) { if (shownTeams.some((t) => t.id === x)) return x; x = parent[x]; } return null; };
+  const PREFER = { procurement: /software|\bit\b/i, technical_approver: /after ?sales|warranty/i };
+  const bestPerRole = ROLE_ORDER.map((r) => {
+    let cands = committee[r].top.slice().sort((a, b) => b.confidence * b.score - a.confidence * a.score);
+    const pref = PREFER[r] && cands.filter((p) => PREFER[r].test(p.title || p.label));
+    if (pref && pref.length) cands = pref;
+    return { role: r, p: cands[0], n: committee[r].count };
+  });
+  const relevance = (w) => (w / maxW > 0.45 ? ["target", "Target domain"] : w / maxW > 0.1 ? ["adjacent", "Adjacent"] : ["low", "Low relevance"]);
+
+  $("#main").innerHTML = `
+    <div class="hero">
+      <div>
+        <div class="eyebrow">Decision map · ${esc(META.company)}</div>
+        <h1>Who actually decides on <em>${esc(META.problem.label.toLowerCase())}</em></h1>
+        <p class="sub">Not the org chart, but the buying center around one problem. Built from ${META.stats.entities.Person || 0} real people and ${Object.values(META.stats.evidence || {}).reduce((a, b) => a + b, 0)} sourced evidence items. Every line carries a source, a date and a confidence.</p>
+      </div>
+      <div class="hero-stats">
+        <div><b>${META.stats.entities.Person || 0}</b><span>people placed</span></div>
+        <div><b>${(META.stats.entities.Team || 0) + (META.stats.entities.Function || 0)}</b><span>teams found</span></div>
+        <div><b>${signals.length}</b><span>hidden signals</span></div>
+      </div>
+    </div>
+    <div class="dmap" id="dmap">
+      <svg class="wires" id="wires"></svg>
+      <div class="dcol"><div class="colh">Company</div>
+        <div class="dnode company" data-k="${esc(tree.id)}" data-id="${esc(tree.id)}"><b>${esc(tree.label)}</b><span>${tree.headcount} mapped</span></div></div>
+      <div class="dcol"><div class="colh">Business units</div>
+        ${units.map((u) => { const [cls, txt] = relevance(u.w); return `<div class="dnode unit ${cls}" data-k="${esc(u.id)}" data-par="${esc(parent[u.id] && units.some((x) => x.id === parent[u.id]) ? parent[u.id] : tree.id)}" data-id="${esc(u.id)}"><b>${esc(u.label)}</b><span class="relv ${cls}">${txt}</span><i style="width:${Math.round(100 * u.w / maxW)}%"></i></div>`; }).join("")}</div>
+      <div class="dcol"><div class="colh">Where the problem lives</div>
+        ${shownTeams.map((t) => `<div class="dnode team" data-k="${esc(t.id)}" data-par="${esc(unitOfNode(t.id))}" data-id="${esc(t.id)}"><b>${esc(t.label)}</b><span>${esc(nodes[unitOfNode(t.id)]?.label || "")} · ${t.headcount} people</span></div>`).join("")}</div>
+      <div class="dcol roles-col"><div class="colh">Buying roles</div>
+        ${bestPerRole.map(({ role, p, n }) => p ? `<div class="dnode prole" data-k="${esc(p.id)}" data-par="${esc(teamOfPerson(p.id) || unitOfNode(p.id) || "")}" data-id="${esc(p.id)}" style="--rc:${ROLES[role].color}">
+            <div class="rname">${esc(ROLES[role].label)} <small>${n}</small></div>
+            <b>${esc(p.name_visible === false ? p.title : p.label)}</b>
+            <span>${esc(p.name_visible === false ? "Name hidden · " : "")}${esc((p.title || "").slice(0, 70))}</span>
+            <div class="rconf"><i style="width:${Math.round(p.confidence * 100)}%"></i><em>${Math.round(p.confidence * 100)}% role · rank ${p.score}</em></div></div>`
+          : `<div class="dnode prole empty-role" style="--rc:${ROLES[role].color}"><div class="rname">${esc(ROLES[role].label)}</div><span>No candidate yet. Harvest more.</span></div>`).join("")}</div>
+    </div>
+    <p class="fine" style="margin-top:10px">Roles are hypotheses from where people sit and what they publicly work on. Seniority alone never makes a sponsor. Open any card for the sources.</p>
+    <div class="grid2" style="margin-top:28px">
+      <div><h2>Entry paths</h2>${paths.map(pathCard).join("")}</div>
+      <div><h2>Hidden signals <span class="muted">· beyond LinkedIn</span></h2>${signals.slice(0, 8).map(signalRow).join("")}</div>
+    </div>`;
+  bindPeople();
+  requestAnimationFrame(drawWires);
+  window.onresize = () => $("#wires") && drawWires();
+}
+
+function drawWires() {
+  const box = $("#dmap"), svg = $("#wires");
+  if (!box || !svg) return;
+  const b = box.getBoundingClientRect();
+  svg.setAttribute("width", b.width); svg.setAttribute("height", b.height);
+  const pos = {};
+  box.querySelectorAll(".dnode[data-k]").forEach((el) => { const r = el.getBoundingClientRect(); pos[el.dataset.k] = { l: r.left - b.left, r: r.right - b.left, y: r.top - b.top + r.height / 2 }; });
+  let d = "";
+  box.querySelectorAll(".dnode[data-par]").forEach((el) => {
+    const a = pos[el.dataset.par], z = pos[el.dataset.k];
+    if (!a || !z || a.r >= z.l) return;
+    const mx = (a.r + z.l) / 2;
+    d += `<path d="M${a.r},${a.y} C${mx},${a.y} ${mx},${z.y} ${z.l},${z.y}" class="${el.classList.contains("prole") ? "wp" : ""}" style="${el.classList.contains("prole") ? `stroke:${getComputedStyle(el).getPropertyValue("--rc")}` : ""}"/>`;
+  });
+  svg.innerHTML = d;
+}
+
+function pathCard(p) {
+  return `<div class="pathcard ${p.kind}"><div class="ph"><b>${esc(p.title)}</b></div><p>${esc(p.why)}</p>
+    <ol>${p.steps.map((s) => `<li data-id="${esc(s.id)}"><span class="dotr" style="background:${ROLES[s.role].color}"></span><div><b>${esc(/name hidden/.test(s.label) ? s.title : s.label)}</b><small>${esc(ROLES[s.role].label)}${/name hidden/.test(s.label) ? " · name hidden" : " · " + esc((s.title || "").slice(0, 60))}</small></div></li>`).join("")}</ol></div>`;
+}
+
+function signalRow(s) {
+  return `<a class="signal" href="${esc(s.url)}" target="_blank" rel="noopener"><span class="tag basis">${esc(BASIS[s.basis] || s.basis)}</span>
+    <div><b>${esc(s.title)}</b><small>${esc((s.excerpt || "").slice(0, 150))}</small></div><em>${s.claims} claims</em></a>`;
+}
+
+async function paths() {
+  const [ps, signals] = await Promise.all([api("/api/paths"), api("/api/signals")]);
+  $("#main").innerHTML = `
+    <div class="eyebrow">Go-to-market</div>
+    <h1>Entry paths</h1>
+    <p class="sub">Four ways into the buying center. Each step is a real, ranked person with the evidence for their role. Pick the route that matches your proof points.</p>
+    <div class="paths-grid">${ps.map(pathCard).join("")}</div>
+    <h2 style="margin-top:28px">All hidden signals</h2>${signals.map(signalRow).join("")}`;
+  bindPeople();
+}
+
 /* ------------------------------------------------------------------ drawer */
 async function openEntity(id) {
   const d = await api(`/api/entity/${encodeURIComponent(id)}`);
@@ -310,7 +442,7 @@ function relCard(r, self) {
       <span class="rt">${out ? "" : "← "}${esc(r.type)}${out ? " →" : ""}</span>
       <a data-goto="${esc(other)}" style="cursor:pointer;font-weight:550">${esc(otherLabel)}</a>
       <span class="status ${r.status}">${r.status}</span>
-      <span class="conf">${Math.round(r.confidence * 100)}% · ${r.n} src</span>
+      <span class="conf">${Math.round(r.confidence * 100)}% · ${r.n} obs</span>
     </header>
     <div class="claims">${r.assertions.map((a) => `<div class="claim">
       <div class="meta"><span class="tag basis">${esc(BASIS[a.basis] || a.basis)}</span><span>${Math.round(a.confidence * 100)}%</span><span>observed ${esc(a.observed_at)}</span>

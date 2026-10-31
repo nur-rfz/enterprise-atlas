@@ -14,7 +14,7 @@ from .buying import ROLE_EDGE, infer_roles, score_person, topic_hits
 from .ontology import Basis, EdgeType, NodeType
 from .problems import Problem
 from .store import Store, normalize, slug
-from .targets import mercedes as T
+from .targets import TARGET as T
 from .titles import FUNCTIONS, SUBFUNCTIONS, _match_any, parse_title
 
 ANON = {"linkedin member", ""}
@@ -36,7 +36,7 @@ def build_seed(store: Store) -> None:
                           observed_at=T.OBSERVED)
     for child, parent in T.UNIT_PARENTS.items():
         store.assert_edge(child, parent, EdgeType.BELONGS_TO, basis=Basis.HEURISTIC, confidence=0.5, evidence_id=None,
-                          extractor="seed", rationale="Mercedes-Benz-branded unit; legal parent not yet sourced. Add an "
+                          extractor="seed", rationale=f"{T.COMPANY_NAME} unit; legal parent not yet sourced. Add an "
                           "annual-report citation to confirm.")
     for name, role in T.BOARD:
         pid = f"person:name:{slug(name)}"
@@ -53,7 +53,7 @@ def _unit_for(tp) -> tuple[str, list[str]]:
     units = [u for u in tp.unit_hints if u != "org:daimler-truck"]
     if "org:daimler-truck" in tp.unit_hints and not units:
         notes.append("Title mentions trucks/buses: since the 2021 spin-off these belong to Daimler Truck, "
-                     "so this Mercedes-Benz affiliation may be stale.")
+                     "so this affiliation may be stale.")
         return "org:daimler-truck", notes
     if tp.historic_employer:
         notes.append("Employer given as 'Daimler AG' (pre-2022 name); affiliation may be stale.")
@@ -120,7 +120,7 @@ def build_needle_people(store: Store, problem: Problem) -> dict:
                 provider="Needle/LinkedIn", access="licensed", excerpt=" · ".join(filter(None, [headline, hit.get("location")])),
                 locator=f"people search: {query_label}", raw_document_id=raw["id"], observed_at=raw["fetched_at"][:10],
             )
-            seen_evidence.setdefault(pid, set()).add(evid)
+            seen_evidence.setdefault(pid, set()).add(hit.get("profileUrl") or evid)
             target_emp = _is_target_employer(tp)
             unit, notes = _unit_for(tp)
             alumni = False
@@ -128,7 +128,7 @@ def build_needle_people(store: Store, problem: Problem) -> dict:
                 # Company-scoped search returned someone whose headline names another employer:
                 # most likely a former employee or stale profile, not a partner.
                 alumni = True
-                notes.append(f"Headline names '{tp.employer_hint}' as employer; likely former Mercedes-Benz "
+                notes.append(f"Headline names '{tp.employer_hint}' as employer; likely former {T.COMPANY_NAME} "
                              "employee (alumni route), not a current one.")
 
             props = {
@@ -156,7 +156,7 @@ def build_needle_people(store: Store, problem: Problem) -> dict:
                                   evidence_id=evid, extractor="needle-people", rationale="Employer named in headline.")
                 store.assert_edge(partner_id, T.COMPANY_ID, EdgeType.PARTNERS_WITH, basis=Basis.SELF_REPORTED_PROFILE,
                                   confidence=0.4, evidence_id=evid, extractor="needle-people",
-                                  rationale="An employee's headline describes delivery work for Mercedes-Benz.")
+                                  rationale=f"An employee's headline describes delivery work for {T.COMPANY_NAME}.")
                 stats["external"] += 1
             else:
                 # place: unit -> function -> team
@@ -199,7 +199,7 @@ def build_needle_people(store: Store, problem: Problem) -> dict:
                 from .buying import RoleHypothesis
                 from .ontology import BuyingRole
                 roles = [RoleHypothesis(BuyingRole.INTRODUCER, 0.3,
-                                        "Likely Mercedes-Benz alumni; may know the current team and route an introduction.")]
+                                        f"Likely {T.COMPANY_NAME} alumni; may know the current team and route an introduction.")]
             for r in roles:
                 target = T.COMPANY_ID if r.role.value == "introducer" else topic
                 store.assert_edge(pid, target, ROLE_EDGE[r.role], basis=Basis.HEURISTIC, confidence=r.confidence,
@@ -212,5 +212,27 @@ def build_needle_people(store: Store, problem: Problem) -> dict:
                 "scores": scores,
             })
             stats["with_roles"] += bool(roles)
+    stats["merged_anonymous"] = merge_anonymous_duplicates(store)
     store.commit()
     return dict(stats)
+
+
+def merge_anonymous_duplicates(store: Store) -> int:
+    """The same member appears named in one search and as 'LinkedIn Member' in another
+    (visibility depends on the query). Merge an anonymous seat into the single named
+    profile with an identical headline and location."""
+    groups: dict[tuple, list[dict]] = {}
+    for p in store.entities(NodeType.PERSON):
+        h = p["props"].get("headline")
+        if h:
+            groups.setdefault((normalize(h), normalize(p["props"].get("location") or "")), []).append(p)
+    n = 0
+    for people in groups.values():
+        named = [p for p in people if p["props"].get("name_visible")]
+        anon = [p for p in people if not p["props"].get("name_visible")]
+        if len(named) == 1 and anon:
+            for a in anon:
+                store.merge_entities(a["id"], named[0]["id"])
+                n += 1
+            store.upsert_entity(named[0]["id"], NodeType.PERSON, named[0]["label"], {"name_visible": True})
+    return n

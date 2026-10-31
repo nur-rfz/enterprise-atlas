@@ -1,0 +1,19 @@
+{
+  "$comment": "Copy to <id>.json. topics are regexes on normalized text (lowercase, umlauts folded: ä->ae). Functions: after_sales, warranty, quality, data_ai, it, procurement, sales_marketing, finance, rnd, production, strategy, hr, legal. Subfunctions: warranty, parts, technical_after_sales, digital_after_sales, after_sales_data, field_quality, it_procurement, enterprise_architecture.",
+  "id": "procurement-automation",
+  "label": "Procurement automation",
+  "description": "AI agents that automate tail-spend purchasing and supplier onboarding.",
+  "topics": {
+    "procurement": ["procurement", "einkauf", "purchas\\w*", "sourcing"],
+    "supplier": ["supplier", "lieferant\\w*", "vendor management"],
+    "automation": ["automation", "automatisierung", "ai", "ki", "rpa"]
+  },
+  "owner_functions": ["procurement"],
+  "owner_subfunctions": ["it_procurement"],
+  "adjacent_functions": ["finance", "it", "data_ai"],
+  "technologies": ["SAP Ariba", "Coupa", "Jaggaer"],
+  "search_titles": ["procurement", "Einkauf", "category manager", "head of purchasing", "procurement digitalization"],
+  "job_keywords": ["procurement digitalization", "source-to-pay"],
+  "web_queries": ["<Company> procurement digitalization conference speaker", "<Company> source-to-pay case study"],
+  "procurement_terms": ["<Company>"]
+}

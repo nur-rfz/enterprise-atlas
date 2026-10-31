@@ -17,9 +17,9 @@ from .builders import build_all
 from .cli import DEFAULT_DB
 from .ontology import Basis, BuyingRole, EdgeType, NodeType
 from .problems import PROBLEMS
-from .report import buying_committee, org_tree, ranked_people
+from .report import buying_committee, entry_paths, org_tree, ranked_people, signals
 from .store import Store, slug
-from .targets import mercedes as T
+from .targets import TARGET as T
 
 WEB = Path(__file__).resolve().parents[2] / "web"
 app = FastAPI(title="Enterprise Atlas")
@@ -40,7 +40,7 @@ def _edge(e) -> dict:
 @app.get("/api/meta")
 def meta():
     s = store()
-    return {"company": "Mercedes-Benz Group", "company_id": T.COMPANY_ID, "problem": {"id": PROBLEM.id, "label": PROBLEM.label,
+    return {"company": T.COMPANY_NAME, "company_id": T.COMPANY_ID, "problem": {"id": PROBLEM.id, "label": PROBLEM.label,
             "description": PROBLEM.description}, "stats": s.stats(),
             "node_types": [n.value for n in NodeType], "edge_types": [e.value for e in EdgeType],
             "bases": [b.value for b in Basis], "roles": [r.value for r in BuyingRole]}
@@ -74,6 +74,16 @@ def org():
 @app.get("/api/committee")
 def committee(limit: int = 12):
     return buying_committee(store(), PROBLEM, limit)
+
+
+@app.get("/api/paths")
+def paths():
+    return entry_paths(store(), PROBLEM)
+
+
+@app.get("/api/signals")
+def get_signals():
+    return signals(store())
 
 
 @app.get("/api/people")

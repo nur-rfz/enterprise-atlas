@@ -65,3 +65,28 @@ WARRANTY_AFTERSALES_ANALYTICS = Problem(
 )
 
 PROBLEMS = {p.id: p for p in [WARRANTY_AFTERSALES_ANALYTICS]}
+
+
+def problem_from_json(path) -> Problem:
+    """Load a problem definition written by an analyst or by Claude (see problem_defs/_template.json)."""
+    import json
+    from pathlib import Path
+
+    d = json.loads(Path(path).read_text())
+    for k in ("owner_functions", "owner_subfunctions", "adjacent_functions"):
+        d[k] = frozenset(d.get(k, []))
+    for k in ("technologies", "search_titles", "job_keywords", "web_queries", "procurement_terms", "cpv_codes"):
+        d[k] = tuple(d.get(k, []))
+    d.pop("$comment", None)
+    return Problem(**d)
+
+
+def _register_json_problems() -> None:
+    from pathlib import Path
+
+    for p in sorted((Path(__file__).parent / "problem_defs").glob("[!_]*.json")):
+        prob = problem_from_json(p)
+        PROBLEMS[prob.id] = prob
+
+
+_register_json_problems()

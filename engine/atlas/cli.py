@@ -18,7 +18,7 @@ from . import build as B
 from .problems import PROBLEMS
 from .report import buying_committee, graph_json, org_tree, print_tree, ranked_people
 from .store import Store
-from .targets import mercedes as T
+from .targets import TARGET as T
 
 DEFAULT_DB = os.environ.get("ATLAS_DB", str(Path(__file__).resolve().parents[2] / "data" / "atlas.sqlite"))
 
@@ -41,6 +41,7 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("report")
     sub.add_parser("stats")
     ex = sub.add_parser("export"); ex.add_argument("out")
+    es = sub.add_parser("export-site"); es.add_argument("out"); es.add_argument("--no-redact", action="store_true")
     a = ap.parse_args(argv)
 
     store = Store(a.db)
@@ -94,6 +95,10 @@ def main(argv: list[str] | None = None) -> None:
         print("\n=== Top 15 ===")
         for p in ranked_people(store, 15):
             print(f"  {p['score']:>3}  {p['label']}  {p['roles']}")
+    elif a.cmd == "export-site":
+        os.environ["ATLAS_DB"] = a.db
+        from .export import export_site
+        print(json.dumps(export_site(a.out, redact=not a.no_redact), indent=2))
     elif a.cmd == "export":
         Path(a.out).write_text(json.dumps(graph_json(store), indent=1, ensure_ascii=False, default=str))
         print(f"wrote {a.out}")

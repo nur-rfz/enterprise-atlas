@@ -23,7 +23,7 @@ FUNCTIONS: dict[str, tuple[str, list[str]]] = {
     "after_sales": ("After-Sales", [
         r"after ?sales?", r"aftersales", r"kundendienst", r"service (and|&)? ?parts", r"service parts",
         r"parts business", r"teile(vertrieb|geschaeft)?", r"service operations", r"workshop", r"werkstatt",
-        r"customer service", r"service business", r"service technik", r"service product",
+        r"customer service", r"service business", r"service technik", r"service product", r"customer services? (and|&)? ?parts", r"gcsp",
     ]),
     "warranty": ("Warranty & Goodwill", [
         r"warranty", r"gewaehrleistung", r"garantie", r"goodwill", r"kulanz", r"claims?",

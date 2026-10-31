@@ -16,6 +16,30 @@ event programme, vendor claim, job ad, association, publication, press, engine h
 Each basis can only establish certain relationships. A conference talk proves `SPOKE_ABOUT`. It is capped
 at "uncertain" if anything (human or LLM) tries to use it to claim `OWNS_PROJECT` or `CONTROLS_PROCUREMENT`.
 
+## Use it as a Claude Code skill
+
+```text
+/plugin marketplace add nur-rfz/enterprise-atlas
+/plugin install enterprise-atlas@enterprise-atlas
+```
+
+Then ask Claude something like *"map the buying center for warranty analytics at Mercedes-Benz"* or
+*"who would buy procurement automation at Siemens?"*. The skill (`skills/enterprise-atlas/SKILL.md`) walks
+Claude through the steps:
+1. Write a target and a problem definition from official sources.
+2. Harvest LinkedIn through Needle (REST, or the Needle MCP tools).
+3. Add job ads, event programmes, vendor case studies, associations and tenders.
+4. Build and curate the graph.
+5. Publish a redacted snapshot.
+
+## Live demo
+
+`docs/` holds a static, redacted export of the Mercedes-Benz build. To publish it, open
+**Settings → Pages**, set **Deploy from a branch**, then choose `main` and `/docs`.
+Regenerate it with `skills/enterprise-atlas/scripts/atlas.sh export-site ../docs`.
+
+The hackathon pitch is in [`PITCH.md`](PITCH.md).
+
 ## Layout
 
 ```
@@ -23,7 +47,8 @@ engine/atlas/
   ontology.py          node/edge types, bases, what each basis may establish, confidence ceilings
   store.py             SQLite: raw_documents → evidence → entities/aliases → assertions; merges & rejections
   titles.py            EN/DE headline parser: seniority, function, sub-team, unit, employer, external/alumni
-  targets/mercedes.py  sourced seed structure, unit lexicon (Cars, Vans, MB.OS, MBUSA, Daimler Truck…), board
+  targets/             mercedes.py (worked example) + _template.json for any company (ATLAS_TARGET=<name>)
+  problem_defs/        _template.json for new problems (auto-registered)
   problems.py          problem definitions (topics, owning functions, harvest queries)
   buying.py            buying-role hypotheses + explainable ranking (fit, role, evidence, reachability)
   build.py             replays raw Needle documents into the org graph + buying roles
@@ -32,8 +57,11 @@ engine/atlas/
     web.py             fetch pages, run/replay Claude extraction, champion detection from public activity
     ted.py             TED EU notices + German OCDS exports (oeffentlichevergabe.de)
   extract.py           Claude structured extraction: page → typed claims with verbatim quotes
-  report.py / api.py   read models, FastAPI, curation endpoints
-web/                   UI (overview, buying center, org map, graph, evidence ledger, sources, inspector)
+  report.py / api.py   read models (org tree, committee, entry paths, signals), FastAPI, curation endpoints
+  export.py            static, redacted site export for GitHub Pages
+web/                   UI (decision map, overview, buying center, entry paths, org map, graph, evidence, sources)
+skills/enterprise-atlas/ Claude Code skill (SKILL.md + scripts/atlas.sh); .claude-plugin/ holds the plugin manifests
+docs/                  published static snapshot
 legacy/codex-mvp/      the previous TypeScript MVP, kept for reference
 ```
 

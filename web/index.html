@@ -6,8 +6,8 @@
   <title>Enterprise Atlas</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/assets/style.css" />
-  <script src="/assets/vendor/cytoscape.min.js"></script>
+  <link rel="stylesheet" href="assets/style.css" />
+  <script src="assets/vendor/cytoscape.min.js"></script>
 </head>
 <body>
   <header class="top">
@@ -25,8 +25,10 @@
 
   <div class="shell">
     <nav class="side">
-      <a data-view="overview" class="active">Overview</a>
+      <a data-view="map" class="active">Decision map</a>
+      <a data-view="overview">Overview</a>
       <a data-view="buying">Buying center</a>
+      <a data-view="paths">Entry paths</a>
       <a data-view="org">Org map</a>
       <a data-view="graph">Graph</a>
       <a data-view="evidence">Evidence</a>
@@ -49,6 +51,6 @@
   </div>
 
   <dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
-  <script src="/assets/app.js"></script>
+  <script src="assets/app.js"></script>
 </body>
 </html>

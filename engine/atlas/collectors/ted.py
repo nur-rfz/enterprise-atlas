@@ -21,7 +21,8 @@ from ..buying import topic_hits
 from ..ontology import Basis, EdgeType, NodeType
 from ..problems import Problem
 from ..store import Store, normalize, slug
-from ..targets import mercedes as T
+from ..targets import TARGET as T
+from ..titles import _match_any
 
 TED_URL = os.environ.get("ATLAS_TED_URL", "https://api.ted.europa.eu/v3/notices/search")
 TED_FIELDS = os.environ.get(
@@ -32,11 +33,13 @@ TED_FIELDS = os.environ.get(
 VERGABE_EXPORT_URL = os.environ.get(
     "ATLAS_VERGABE_URL", "https://oeffentlichevergabe.de/api/notice-exports?pubDay={day}&format=ocds.zip")
 
-MB = re.compile(r"mercedes|daimler ag|mbition|mercedes benz", re.I)
+def _is_target(name: str) -> bool:
+    return _match_any(T.EMPLOYER_PATTERNS or [re.escape(normalize(T.COMPANY_NAME))], normalize(name))
 
 
 def ted_query_for(problem: Problem) -> str:
-    names = " OR ".join(f'"{n}"' for n in ("Mercedes-Benz", "Daimler AG", "MBition", "Mercedes-Benz Tech Innovation"))
+    company = next((u for u in T.UNITS if u[0] == T.COMPANY_ID), (None, None, T.COMPANY_NAME, []))
+    names = " OR ".join(f'"{n}"' for n in [company[2], *company[3]][:6])
     return f"FT ~ ({names})"
 
 
@@ -93,7 +96,7 @@ def _all(v) -> list[str]:
 
 
 def _org(store: Store, name: str) -> str:
-    if MB.search(name):
+    if _is_target(name):
         return T.COMPANY_ID
     hits = store.find_by_alias(name)
     if hits:

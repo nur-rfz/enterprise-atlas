@@ -104,3 +104,59 @@ def print_tree(t: dict, indent: int = 0, max_people: int = 4, out=print) -> None
         out(f"{pad}  · {p['label']} — score {p['score']}")
     if len(people) > max_people:
         out(f"{pad}  · … {len(people) - max_people} more")
+
+
+def entry_paths(store: Store, problem: Problem) -> list[dict]:
+    """Suggested routes into the buying committee, each step a ranked, evidence-backed person."""
+    import re
+
+    c = buying_committee(store, problem, limit_per_role=25)
+    paths = []
+
+    def pick(role, used, prefer=None):
+        cands = [p for p in c[role]["top"] if p["id"] not in used]
+        if prefer:
+            pref = [p for p in cands if re.search(prefer, (p.get("title") or "") + " " + p["label"], re.I)]
+            cands = pref or cands
+        cands.sort(key=lambda p: -(p["confidence"] * (p["score"] or 1)))
+        if cands:
+            used.add(cands[0]["id"])
+            return {**cands[0], "_role": role}
+        return None
+
+    def add(title, why, kind, plan):
+        used: set = set()
+        steps = [pick(r, used, pref) for r, pref in plan]
+        steps = [s for s in steps if s]
+        if len(steps) >= 2:
+            paths.append({"title": title, "why": why, "kind": kind,
+                          "steps": [{"id": s["id"], "label": s["label"], "title": s.get("title"), "role": s["_role"],
+                                     "rationale": s["rationale"]} for s in steps]})
+
+    add("Bottom-up through the data team",
+        "Start where the tool gets evaluated. A data/analytics lead embedded in the domain can run a pilot and carry it to the business owner.",
+        "technical", [("evaluator", None), ("problem_owner", "warranty|garantie|quality|qualit"), ("business_sponsor", None)])
+    add("Champion first",
+        "Someone already speaking publicly about the problem is the warmest first conversation; use their talk as the opener.",
+        "champion", [("champion", None), ("evaluator", None), ("business_sponsor", None)])
+    add("Warm introduction",
+        "Partners delivering on the account, alumni and leadership assistants route introductions without a cold approach.",
+        "intro", [("introducer", "assistant"), ("problem_owner", None), ("business_sponsor", None)])
+    add("Formal vendor route",
+        "Register with the software category manager early so procurement is not the blocker once the business says yes.",
+        "formal", [("procurement", r"software|\bit\b"), ("technical_approver", "after ?sales"), ("business_sponsor", None)])
+    return paths
+
+
+def signals(store: Store, limit: int = 40) -> list[dict]:
+    """Off-LinkedIn evidence: the hidden intelligence layer."""
+    skip = {"self_reported_profile", "heuristic"}
+    counts = {r[0]: r[1] for r in store.db.execute("SELECT evidence_id, COUNT(*) FROM assertions GROUP BY evidence_id")}
+    rows = [dict(e, claims=counts.get(e["id"], 0)) for e in store.evidence() if e["basis"] not in skip]
+    seen, out = set(), []
+    for r in sorted(rows, key=lambda r: (r["basis"] == "official_company", -(r["claims"]))):
+        if r["url"] in seen:
+            continue
+        seen.add(r["url"])
+        out.append({k: r[k] for k in ("id", "url", "title", "excerpt", "basis", "provider", "published_at", "observed_at", "claims")})
+    return out[:limit]

@@ -1,0 +1,20 @@
+{
+  "$comment": "Copy to <name>.json and run with ATLAS_TARGET=<name>. Only put facts in SOURCES/STRUCTURE that a cited official source states. Patterns are regexes on normalized headline text.",
+  "COMPANY_ID": "org:acme-group",
+  "COMPANY_NAME": "ACME Group",
+  "OBSERVED": "2026-10-31",
+  "LINKEDIN_COMPANIES": {"acme": "<numeric LinkedIn company id from needleGetLinkedinCompany>"},
+  "SOURCES": {
+    "company_page": {"url": "https://www.acme.com/about", "title": "ACME · About", "basis": "official_company", "provider": "web",
+                     "excerpt": "ACME Group is the holding company of ACME Industrial GmbH and ACME Services GmbH."}
+  },
+  "UNITS": [
+    ["org:acme-group", "Company", "ACME Group", ["ACME", "ACME AG"]],
+    ["bu:acme-industrial", "BusinessUnit", "ACME Industrial", ["ACME Industrial GmbH"]]
+  ],
+  "STRUCTURE": [["bu:acme-industrial", "org:acme-group", "company_page", 0.9]],
+  "UNIT_PARENTS": {},
+  "BOARD": [["Jane Example", "Chief Executive Officer"]],
+  "UNIT_LEXICON": {"bu:acme-industrial": ["industrial"]},
+  "EMPLOYER_PATTERNS": ["acme"]
+}

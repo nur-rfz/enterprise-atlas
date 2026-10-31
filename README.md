@@ -1,132 +1,88 @@
 # Enterprise Atlas
 
-Enterprise Atlas is a hackathon MVP for reconstructing the buying center around a specific enterprise problem. A researcher supplies a target company, a startup product description, and an optional geography. The app expands the problem into business-language synonyms, discovers public sources, extracts conservative structured facts, builds a typed Cytoscape.js graph, ranks stakeholder candidates, and finds evidence-backed entry routes.
+Maps **how decisions happen** inside a large enterprise, not just its reporting lines.
+The first target is Mercedes-Benz, for a startup selling warranty and after-sales analytics.
 
-The product is intentionally an evidence graph, not a scraped org chart. Every extracted relationship carries source references, an observed date, confidence, and one of three statuses: `confirmed`, `inferred`, or `uncertain`.
+Two overlapping graphs live in one store:
 
-## What is implemented
+* **Organizational graph.** Company → business unit → function → team → person.
+* **Buying-center graph.** Who owns the problem, who sponsors, who evaluates, who approves the integration,
+  who runs procurement, who can introduce you. These are built per *problem*, because the same person can
+  matter for one product and be irrelevant for another.
 
-- Product-to-problem synonym generation, with a deterministic fallback
-- Live public-web discovery through a provider adapter (`Tavily` or `Brave Search`)
-- Normal HTTP retrieval for public HTML and PDF handoff to the structured extractor
-- OpenAI Responses API extraction with a strict entity/relationship JSON schema
-- Conservative exact-context entity resolution that leaves ambiguous entities separate
-- Typed graph nodes and edges matching the Enterprise Atlas ontology
-- Stakeholder scoring from problem ownership, evidence strength, buying signal, and reachability
-- Short-path search from partners, events, and supplier/tender processes into target functions
-- Interactive Cytoscape.js graph with status filters and click-through evidence detail
-- Separate organization and buying-center layers, plus an external ecosystem overlay
-- Ontology editing for entities and evidence-required relationships
-- Public URL ingestion and an analyst-controlled duplicate merge queue
-- Read-only Needle LinkedIn enrichment with licensed-source provenance
-- Ranked buying committee, entry paths, unknowns, query ledger, and JSON export
-- Graceful empty-state results when a source, search provider, or model call is unavailable
-- Device-local persistence of the most recent live result through `localStorage`
-- Visibly labeled illustrative fixture for UI development
+The key rule: **every relationship is an aggregation of sourced assertions.** Each assertion has a source,
+an observation date, a confidence and a *basis* (LinkedIn profile, official company page, procurement record,
+event programme, vendor claim, job ad, association, publication, press, engine heuristic, analyst).
+Each basis can only establish certain relationships. A conference talk proves `SPOKE_ABOUT`. It is capped
+at "uncertain" if anything (human or LLM) tries to use it to claim `OWNS_PROJECT` or `CONTROLS_PROCUREMENT`.
 
-Enterprise Atlas never sends outreach. It does not scrape LinkedIn, bypass access restrictions, guess emails, or turn a title or conference appearance into purchasing authority.
+## Layout
 
-## Environment variables
+```
+engine/atlas/
+  ontology.py          node/edge types, bases, what each basis may establish, confidence ceilings
+  store.py             SQLite: raw_documents → evidence → entities/aliases → assertions; merges & rejections
+  titles.py            EN/DE headline parser: seniority, function, sub-team, unit, employer, external/alumni
+  targets/mercedes.py  sourced seed structure, unit lexicon (Cars, Vans, MB.OS, MBUSA, Daimler Truck…), board
+  problems.py          problem definitions (topics, owning functions, harvest queries)
+  buying.py            buying-role hypotheses + explainable ranking (fit, role, evidence, reachability)
+  build.py             replays raw Needle documents into the org graph + buying roles
+  collectors/
+    needle.py          budget-aware LinkedIn harvester (Needle REST) + importer for Needle MCP output
+    web.py             fetch pages, run/replay Claude extraction, champion detection from public activity
+    ted.py             TED EU notices + German OCDS exports (oeffentlichevergabe.de)
+  extract.py           Claude structured extraction: page → typed claims with verbatim quotes
+  report.py / api.py   read models, FastAPI, curation endpoints
+web/                   UI (overview, buying center, org map, graph, evidence ledger, sources, inspector)
+legacy/codex-mvp/      the previous TypeScript MVP, kept for reference
+```
 
-Copy `.env.example` to `.env.local` and configure:
-
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `OPENAI_API_KEY` | For structured extraction | Generates problem synonyms and extracts facts with a strict JSON schema. |
-| `OPENAI_MODEL` | No | Defaults to `gpt-5-mini`. Use a model that supports Responses API structured output. |
-| `SEARCH_PROVIDER` | For live discovery | `tavily` or `brave`. If omitted, the app detects a configured provider key. |
-| `TAVILY_API_KEY` | When using Tavily | Public-web search and optional cached page content. |
-| `BRAVE_SEARCH_API_KEY` | When using Brave | Public-web search. Pages are then retrieved normally by the server. |
-| `NEEDLE_API_KEY` | For licensed LinkedIn enrichment | Server-side Needle API credential. The adapter uses search only. |
-| `NEEDLE_CONNECTED_ACCOUNT_ID` | Recommended with Needle | Connected LinkedIn account selected in the Needle workspace. |
-| `NEEDLE_MODE` | No | `classic` (default) or `sales_navigator`. |
-
-Keep all keys server-side. None of these variables should use a `NEXT_PUBLIC_` prefix.
-
-## Setup
-
-Requirements: Node.js 22.13 or newer.
+## Run
 
 ```bash
-npm install
-cp .env.example .env.local
-npm run dev
+python3 -m venv .venv && .venv/bin/pip install -r engine/requirements.txt
+cp .env.example .env   # add NEEDLE_API_KEY, NEEDLE_CONNECTED_ACCOUNT_ID, ANTHROPIC_API_KEY
+cd engine
+../.venv/bin/python -m atlas.cli import ../data/needle/*.jsonl ../data/web/*.jsonl   # load existing harvests
+../.venv/bin/python -m atlas.cli harvest-needle --pages 3                           # live LinkedIn harvest
+../.venv/bin/python -m atlas.cli harvest-ted                                         # EU tenders
+../.venv/bin/python -m atlas.cli harvest-web https://…/speaker-page https://…/job-ad # pages → Claude → claims
+../.venv/bin/python -m atlas.cli report
+../.venv/bin/uvicorn atlas.api:app --port 8787                                       # UI at http://localhost:8787
+../.venv/bin/python -m pytest -q tests
 ```
 
-Open the local URL printed by the development server. Without keys, the complete illustrative fixture remains available and a live run returns explicit configuration warnings rather than fabricated research.
+Raw responses are stored verbatim. `build` deterministically regenerates the graph from them, so a better
+parser upgrades every past harvest. Analyst merges and claim rejections are stored separately and re-applied
+after each rebuild.
 
-## Demo flow
+## How the engine reasons
 
-1. Start on the source-backed Mercedes-Benz aftersales workspace. Vendor claims and unresolved authority are labeled explicitly.
-2. Click a node or relationship. The right panel changes to its source trail, status, confidence, and unknowns.
-3. Toggle confirmed, inferred, and uncertain relationships in the left panel.
-4. Click a ranked stakeholder or an entry-path step to focus it in the graph.
-5. Enter a new company and product description, then select **Run research**.
-6. Review warnings, the live provider label, research ledger, evidence coverage, and unavailable sources.
-7. Use **Export graph** to download the complete evidence graph as JSON.
+1. **Placement.** A headline like *"Director of Service & Parts Business and Warranty & Goodwill Mercedes-Benz Cars bei Mercedes-Benz AG"*
+   becomes `seniority=director`, `function=after_sales`, `team=warranty`, `unit=Mercedes-Benz Cars`.
+   Teams and functions are created on the fly. Their `BELONGS_TO` edges gain confidence as independent profiles corroborate them.
+2. **Hygiene.**
+   * "Daimler AG" employers and truck/bus titles are flagged as stale. Daimler Truck has been a separate company since 2021.
+   * People whose headline names another employer are treated as **alumni**, an introduction route, not as Mercedes staff.
+   * "…consultant to Mercedes-Benz" headlines become **partners**.
+3. **Buying roles** come only from domain plus seniority, never seniority alone:
+   * Director in warranty → sponsor *hypothesis*.
+   * Data/AI lead embedded in after-sales → evaluator.
+   * IT architect serving the domain → technical approver.
+   * IT/software category manager → procurement.
+   * Assistant to after-sales leadership → introducer.
+   * Public talk on the topic → champion.
+4. **Hidden-intelligence layer.** Job ads, event programmes, vendor case studies, associations and tenders
+   add facts LinkedIn does not have. Example: a job ad places the *After-Sales Data, AI & Analytics* team inside
+   *IT After-Sales* and names Databricks and AWS.
 
-A useful live example is:
+## Data limits to know
 
-- Target enterprise: `Mercedes-Benz Group`
-- Startup product: `Natural-language AI analytics for warranty and aftersales data`
-- Geography: `Germany`
-
-## Verification
-
-```bash
-npm run build
-npm test
-```
-
-The test flow compiles the Cloudflare-compatible app, server-renders the workspace, verifies API input validation, and checks the evidence guardrails in the fixture and extraction pipeline.
-
-## Architecture
-
-```text
-Research form
-  → product synonym expansion
-  → search-provider adapter
-  → permitted HTML/PDF retrieval
-  → OpenAI strict fact extraction
-  → conservative entity resolution
-  → graph + scoring + path search
-  → Cytoscape workspace + evidence ledger
-```
-
-- `app/api/research/route.ts` — the end-to-end research endpoint
-- `lib/search-providers.ts` — Tavily and Brave adapter implementations
-- `lib/openai-extraction.ts` — synonym and fact extraction with structured output
-- `lib/research-pipeline.ts` — query planning, retrieval, resolution, ranking, and path finding
-- `lib/atlas-types.ts` — ontology and result contracts
-- `lib/sample-graph.ts` — visibly illustrative UI fixture with real public source URLs
-- `components/GraphView.tsx` — Cytoscape graph
-- `components/AtlasApp.tsx` — interactive research workspace
-
-## Evidence rules
-
-- A `confirmed` extracted edge without an evidence reference is automatically downgraded to `uncertain`.
-- AI-suggested organizational matches are merged only when type and normalized label match exactly. Ambiguous entities remain separate.
-- Public appearances establish topic involvement, not budget ownership or supplier authority.
-- Missing identity, mandate, reporting line, and authority are displayed as unknowns.
-- Source failures preserve the search result and mark it unavailable; the app does not retry through restricted or unauthorized routes.
-- PDFs are provided to the OpenAI extractor by public URL. HTML is retrieved with a descriptive user agent through ordinary HTTP access only.
-
-## Persistence and deployment
-
-The MVP keeps persistence deliberately simple: the default fixture is JSON-compatible TypeScript data, live results are stored on the current device, and every graph can be exported as JSON. There is no database or hidden contact store.
-
-For a team deployment, the next incremental step is a single SQLite/D1 table for research runs and one for evidence documents. The current `ResearchGraph` contract can be stored without changing the UI.
-
-## Needle and optional providers
-
-[Needle](https://needle.app/docs/mcp/introduction) is implemented as an optional server-side, read-only enrichment adapter. It searches LinkedIn through a connected, licensed Needle account, attaches `licensed` access and `Needle` provenance to every returned record, and creates only organization-affiliation edges. It does not call messaging endpoints, guess emails, send outreach, or infer buying authority from a title.
-
-TED public notices and other formal procurement feeds fit behind the same provider boundary. They are most useful for public-sector targets; their absence is not treated as evidence that a private enterprise has no buying activity.
-
-## Current MVP limits
-
-- Search quality depends on the configured provider and what the target publishes publicly.
-- Source text extraction is intentionally lightweight; JavaScript-only pages may yield snippets instead of full text.
-- No OCR is applied to scanned PDFs.
-- The app surfaces candidates and paths for human validation; it does not claim an authoritative org chart.
-- There is no automatic contact enrichment or messaging.
+* **Needle on a standard LinkedIn account.** About 100 people searches a day and 500 a week, 10 hits per page.
+  Out-of-network members come back as "LinkedIn Member" with their headline only. The engine keeps them as
+  anonymous seats, which still map the org. Sales Navigator on the connected account raises limits and adds
+  department filters (`NEEDLE_MODE=sales_navigator`).
+* **TED.** Mercedes-Benz is private, so it mostly appears in TED as a *supplier* (fleet and service contracts),
+  not as a buyer.
+* **The web records in `data/web/` are built from search-result summaries.** They are marked non-verbatim until the
+  page is fetched and re-extracted with `harvest-web`.

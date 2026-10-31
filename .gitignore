@@ -39,3 +39,16 @@ yarn-error.log*
 /.wrangler/
 /outputs/
 /work/
+
+# python engine
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Harvested data contains named individuals (LinkedIn, speaker pages).
+# Do not commit it to a public repository.
+data/*.sqlite
+data/needle/
+data/web/
+.env

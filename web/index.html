@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Enterprise Atlas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/style.css" />
+  <script src="assets/vendor/cytoscape.min.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="mark"></span>Atlas</div>
+    <div class="crumbs">
+      <span class="pill" id="company">Mercedes-Benz Group</span>
+      <span class="sep">/</span>
+      <span class="pill ghost" id="problem">…</span>
+    </div>
+    <div class="search">
+      <input id="q" placeholder="Search people, teams, vendors…" autocomplete="off" />
+      <div class="results" id="qres"></div>
+    </div>
+  </header>
+
+  <div class="shell">
+    <nav class="side">
+      <a data-view="map" class="active">Decision map</a>
+      <a data-view="overview">Overview</a>
+      <a data-view="buying">Buying center</a>
+      <a data-view="paths">Entry paths</a>
+      <a data-view="org">Org map</a>
+      <a data-view="graph">Graph</a>
+      <a data-view="evidence">Evidence</a>
+      <a data-view="sources">Sources</a>
+      <div class="legend">
+        <div class="lh">Claim status</div>
+        <div><i class="dot confirmed"></i>Confirmed</div>
+        <div><i class="dot inferred"></i>Inferred</div>
+        <div><i class="dot uncertain"></i>Uncertain</div>
+        <p class="fine">Every relationship carries a source, an observation date and a confidence. Buying roles are hypotheses from titles and public activity, never proof of authority.</p>
+      </div>
+    </nav>
+
+    <main id="main"></main>
+
+    <aside class="drawer" id="drawer" aria-hidden="true">
+      <button class="close" id="drawerClose" aria-label="Close">×</button>
+      <div id="drawerBody"></div>
+    </aside>
+  </div>
+
+  <dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
+  <script src="assets/app.js"></script>
+</body>
+</html>

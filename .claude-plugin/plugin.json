@@ -1,0 +1,10 @@
+{
+  "name": "enterprise-atlas",
+  "version": "0.3.0",
+  "description": "Map how buying decisions really happen inside a large enterprise: an evidence-backed org graph plus a per-problem buying-center graph, built from LinkedIn (via Needle), job ads, event programmes, vendor case studies, associations and public tenders.",
+  "author": { "name": "nur-rfz" },
+  "homepage": "https://github.com/nur-rfz/enterprise-atlas",
+  "repository": "https://github.com/nur-rfz/enterprise-atlas",
+  "license": "MIT",
+  "keywords": ["account-mapping", "buying-center", "ontology", "knowledge-graph", "enterprise-sales", "linkedin", "needle", "procurement"]
+}

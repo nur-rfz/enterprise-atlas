@@ -2,184 +2,216 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { GraphView, type GraphSelection } from "./GraphView";
-import { sampleGraph } from "../lib/sample-graph";
-import type { AtlasEvidence, ClaimStatus, ResearchGraph } from "../lib/atlas-types";
-
-const STATUS_OPTIONS: Array<{ value: ClaimStatus; label: string }> = [
-  { value: "confirmed", label: "Confirmed" },
-  { value: "inferred", label: "AI inference" },
-  { value: "uncertain", label: "Uncertain" },
-];
+import { mercedesGraph } from "../lib/mercedes-graph";
+import { EDGE_TYPES, NODE_TYPES, type AtlasEdge, type AtlasEvidence, type AtlasNode, type ClaimStatus, type GraphLayer, type GraphPatch, type ResearchGraph } from "../lib/atlas-types";
 
 const TYPE_COLORS: Record<string, string> = {
-  Company: "#183f31", BusinessUnit: "#9ed6ef", Function: "#c9f3cf", Person: "#f4c7c3", Role: "#e3d5f5",
-  Project: "#efb17d", Technology: "#eedbc4", Partner: "#dff467", Event: "#f4d37c", Tender: "#b8e4da", Evidence: "#e2e5df",
+  Company: "#153d30", BusinessUnit: "#9ac9dd", Function: "#bde4c5", Person: "#e9b9b3", Role: "#d7cae8",
+  Project: "#e7a66e", Technology: "#dec9ad", Partner: "#d9ec62", Event: "#e9c767", Tender: "#9bd3c7", Evidence: "#d7dad4",
 };
+const NEEDLE_CLUSTERS = ["aftersales data analytics", "warranty quality reliability", "data product AI", "IT architecture integration", "procurement supplier"];
 
-function getEvidence(graph: ResearchGraph, ids: string[]): AtlasEvidence[] {
-  const wanted = new Set(ids);
-  return graph.evidence.filter((item) => wanted.has(item.id));
+type Modal = "research" | "node" | "edge" | "source" | "needle" | "duplicates" | null;
+type InspectorTab = "properties" | "evidence" | "relationships";
+type ResultTab = "stakeholders" | "paths" | "sources";
+type NeedleStatus = { configured: boolean; connectedAccountConfigured: boolean; mode: string; message: string };
+
+function normal(value: string) { return value.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, " ").trim(); }
+function slug(value: string) { return normal(value).replace(/\s+/g, "-").slice(0, 60) || "entity"; }
+function initials(value: string) { return value.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(); }
+function labelize(value: string) { return value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
+function evidenceFor(graph: ResearchGraph, ids: string[]) { const wanted = new Set(ids); return graph.evidence.filter((item) => wanted.has(item.id)); }
+
+function mergePatch(graph: ResearchGraph, patch: GraphPatch): ResearchGraph {
+  const evidence = [...graph.evidence];
+  const evidenceMap = new Map(evidence.map((item) => [item.url, item.id]));
+  const patchEvidenceIds = new Map<string, string>();
+  for (const item of patch.evidence) {
+    const existingId = evidenceMap.get(item.url);
+    if (existingId) patchEvidenceIds.set(item.id, existingId);
+    else { evidence.push(item); evidenceMap.set(item.url, item.id); patchEvidenceIds.set(item.id, item.id); }
+  }
+  const nodes = graph.nodes.map((node) => ({ ...node, evidenceIds: [...node.evidenceIds] }));
+  const nodeIdMap = new Map<string, string>();
+  const companyId = nodes.find((node) => node.type === "Company")?.id ?? "company";
+  nodeIdMap.set("company", companyId); nodeIdMap.set("target-company", companyId);
+  for (const incoming of patch.nodes) {
+    const existing = nodes.find((node) => node.type === incoming.type && normal(node.label) === normal(incoming.label));
+    const remappedEvidence = incoming.evidenceIds.map((id) => patchEvidenceIds.get(id) ?? id);
+    if (existing) {
+      existing.evidenceIds = [...new Set([...existing.evidenceIds, ...remappedEvidence])];
+      existing.aliases = [...new Set([...(existing.aliases ?? []), ...(incoming.aliases ?? [])])];
+      nodeIdMap.set(incoming.id, existing.id);
+    } else {
+      const id = nodes.some((node) => node.id === incoming.id) ? `${incoming.id}-${nodes.length + 1}` : incoming.id;
+      nodes.push({ ...incoming, id, evidenceIds: remappedEvidence }); nodeIdMap.set(incoming.id, id);
+    }
+  }
+  const edges = [...graph.edges];
+  for (const incoming of patch.edges) {
+    const source = nodeIdMap.get(incoming.source) ?? incoming.source;
+    const target = nodeIdMap.get(incoming.target) ?? incoming.target;
+    if (!nodes.some((node) => node.id === source) || !nodes.some((node) => node.id === target)) continue;
+    if (edges.some((edge) => edge.source === source && edge.target === target && edge.type === incoming.type)) continue;
+    edges.push({ ...incoming, id: edges.some((edge) => edge.id === incoming.id) ? `${incoming.id}-${edges.length + 1}` : incoming.id, source, target, evidenceIds: incoming.evidenceIds.map((id) => patchEvidenceIds.get(id) ?? id) });
+  }
+  return { ...graph, provider: `${graph.provider} + ${patch.provider}`, nodes, edges, evidence, warnings: [...new Set([...graph.warnings, ...patch.warnings])] };
 }
 
-function initials(value: string) {
-  return value.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+function ModalFrame({ title, eyebrow, onClose, children }: { title: string; eyebrow: string; onClose: () => void; children: React.ReactNode }) {
+  return <div className="modal-backdrop"><button className="modal-scrim" type="button" onClick={onClose} aria-label="Close dialog" /><section className="workbench-modal" role="dialog" aria-modal="true" aria-label={title}><div className="modal-heading"><div><span>{eyebrow}</span><h2>{title}</h2></div><button type="button" onClick={onClose} aria-label="Close">×</button></div>{children}</section></div>;
 }
 
 export function AtlasApp() {
-  const [graph, setGraph] = useState<ResearchGraph>(sampleGraph);
-  const [company, setCompany] = useState(sampleGraph.company);
-  const [product, setProduct] = useState(sampleGraph.product);
-  const [geography, setGeography] = useState(sampleGraph.geography ?? "");
-  const [selection, setSelection] = useState<GraphSelection>({ kind: "node", id: sampleGraph.nodes[2].id });
+  const [graph, setGraph] = useState<ResearchGraph>(mercedesGraph);
+  const [selection, setSelection] = useState<GraphSelection>({ kind: "node", id: "aftersales" });
+  const [activeLayer, setActiveLayer] = useState<GraphLayer | "combined">("combined");
   const [statuses, setStatuses] = useState<Set<ClaimStatus>>(new Set(["confirmed", "inferred", "uncertain"]));
-  const [loading, setLoading] = useState(false);
+  const [modal, setModal] = useState<Modal>(null);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("properties");
+  const [resultTab, setResultTab] = useState<ResultTab>("stakeholders");
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showMethod, setShowMethod] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [needleStatus, setNeedleStatus] = useState<NeedleStatus | null>(null);
+  const [needleKeywords, setNeedleKeywords] = useState(NEEDLE_CLUSTERS.join("\n"));
 
   useEffect(() => {
+    let parsed: ResearchGraph | null = null;
     try {
-      const stored = window.localStorage.getItem("enterprise-atlas:last-research");
-      if (!stored) return;
-      const parsed = JSON.parse(stored) as ResearchGraph;
-      if (parsed.nodes?.length && parsed.company && !parsed.illustrative) {
-        setGraph(parsed);
-        setCompany(parsed.company);
-        setProduct(parsed.product);
-        setGeography(parsed.geography ?? "");
-        setSelection({ kind: "node", id: parsed.nodes[0].id });
-      }
-    } catch { /* Device-local persistence is optional. */ }
+      const stored = window.localStorage.getItem("enterprise-atlas:workspace");
+      if (stored) parsed = JSON.parse(stored) as ResearchGraph;
+    } catch { /* Local persistence is optional. */ }
+    queueMicrotask(() => {
+      if (parsed?.nodes?.length && parsed.edges && parsed.evidence) setGraph(parsed);
+      setHydrated(true);
+    });
   }, []);
+  useEffect(() => { if (hydrated) window.localStorage.setItem("enterprise-atlas:workspace", JSON.stringify(graph)); }, [graph, hydrated]);
 
-  const businessNodes = graph.nodes.filter((node) => node.type === "BusinessUnit" || node.type === "Function");
   const selectedNode = selection.kind === "node" ? graph.nodes.find((node) => node.id === selection.id) : undefined;
   const selectedEdge = selection.kind === "edge" ? graph.edges.find((edge) => edge.id === selection.id) : undefined;
   const incidentEdges = selectedNode ? graph.edges.filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id) : [];
-  const selectionEvidenceIds = selectedNode
-    ? [...selectedNode.evidenceIds, ...incidentEdges.flatMap((edge) => edge.evidenceIds)]
-    : selectedEdge?.evidenceIds ?? [];
-  const selectionEvidence = getEvidence(graph, [...new Set(selectionEvidenceIds)]);
-  const selectedTitle = selectedNode?.label ?? (selectedEdge ? `${graph.nodes.find((node) => node.id === selectedEdge.source)?.label ?? "Source"} → ${graph.nodes.find((node) => node.id === selectedEdge.target)?.label ?? "Target"}` : "Select an entity");
-  const selectedSummary = selectedNode?.summary ?? selectedEdge?.rationale ?? "Choose a node or relationship to inspect its evidence.";
+  const selectedEvidence = evidenceFor(graph, [...new Set(selectedNode ? [...selectedNode.evidenceIds, ...incidentEdges.flatMap((edge) => edge.evidenceIds)] : selectedEdge?.evidenceIds ?? [])]);
   const selectedStatus: ClaimStatus = selectedEdge?.status ?? (selectedNode?.evidenceIds.length ? "confirmed" : "uncertain");
-  const selectedUnknowns = selectedNode?.unknowns ?? (selectedEdge?.status !== "confirmed" ? ["The relationship is not explicitly established by a public source."] : []);
-  const sourceCoverage = graph.edges.length ? Math.round((graph.edges.filter((edge) => edge.evidenceIds.length).length / graph.edges.length) * 100) : 0;
+  const selectedTitle = selectedNode?.label ?? (selectedEdge ? `${graph.nodes.find((node) => node.id === selectedEdge.source)?.label} → ${graph.nodes.find((node) => node.id === selectedEdge.target)?.label}` : "Nothing selected");
+  const sourceCoverage = graph.edges.length ? Math.round(graph.edges.filter((edge) => edge.evidenceIds.length).length / graph.edges.length * 100) : 0;
+  const businessNodes = graph.nodes.filter((node) => node.type === "BusinessUnit" || node.type === "Function");
+  const duplicates = useMemo(() => graph.nodes.flatMap((node, index) => graph.nodes.slice(index + 1).filter((candidate) => candidate.type === node.type && (normal(candidate.label) === normal(node.label) || candidate.aliases?.some((alias) => normal(alias) === normal(node.label)))).map((candidate) => [node, candidate] as [AtlasNode, AtlasNode])), [graph.nodes]);
+  const visibleGraph = useMemo<ResearchGraph>(() => {
+    if (activeLayer === "combined") return graph;
+    const allowedLayers: GraphLayer[] = activeLayer === "buying_center" ? ["buying_center", "ecosystem"] : ["organization"];
+    const nodes = graph.nodes.filter((node) => !node.layers || node.layers.some((layer) => allowedLayers.includes(layer)));
+    const ids = new Set(nodes.map((node) => node.id));
+    return { ...graph, nodes, edges: graph.edges.filter((edge) => (!edge.layer || allowedLayers.includes(edge.layer)) && ids.has(edge.source) && ids.has(edge.target)) };
+  }, [activeLayer, graph]);
 
-  const nodeTypeLegend = useMemo(() => [...new Set(graph.nodes.map((node) => node.type))].slice(0, 6), [graph]);
+  function updateGraph(next: ResearchGraph) { setGraph(next); }
+  function select(next: GraphSelection) { setSelection(next); setInspectorTab("properties"); }
+  function toggleStatus(status: ClaimStatus) { setStatuses((current) => { const next = new Set(current); if (next.has(status) && next.size > 1) next.delete(status); else next.add(status); return next; }); }
+  function downloadGraph() { const url = URL.createObjectURL(new Blob([JSON.stringify(graph, null, 2)], { type: "application/json" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${slug(graph.company)}-ontology.json`; anchor.click(); URL.revokeObjectURL(url); }
 
-  function toggleStatus(value: ClaimStatus) {
-    setStatuses((current) => {
-      const next = new Set(current);
-      if (next.has(value) && next.size > 1) next.delete(value); else next.add(value);
-      return next;
-    });
+  async function openNeedle() {
+    setModal("needle"); setNeedleStatus(null); setError(null);
+    try { const response = await fetch("/api/enrichment/needle"); setNeedleStatus(await response.json() as NeedleStatus); }
+    catch { setNeedleStatus({ configured: false, connectedAccountConfigured: false, mode: "classic", message: "Needle status could not be loaded." }); }
   }
 
-  async function runResearch(event: React.FormEvent) {
-    event.preventDefault();
-    if (!company.trim() || !product.trim()) return;
-    setLoading(true);
-    setError(null);
+  async function runNeedle() {
+    setBusy("needle"); setError(null);
     try {
-      const response = await fetch("/api/research", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ company, product, geography }),
-      });
+      const response = await fetch("/api/enrichment/needle", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company: graph.company, geography: graph.geography, keywords: needleKeywords.split("\n").map((item) => item.trim()).filter(Boolean) }) });
+      const data = await response.json() as GraphPatch & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Needle enrichment failed.");
+      updateGraph(mergePatch(graph, data)); setModal(null);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Needle enrichment failed."); }
+    finally { setBusy(null); }
+  }
+
+  async function runResearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy("research"); setError(null); const form = new FormData(event.currentTarget);
+    try {
+      const response = await fetch("/api/research", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company: form.get("company"), product: form.get("product"), geography: form.get("geography") }) });
       const data = await response.json() as ResearchGraph & { error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Research could not be completed.");
-      setGraph(data);
-      setSelection({ kind: "node", id: data.nodes[0]?.id ?? "target-company" });
-      window.localStorage.setItem("enterprise-atlas:last-research", JSON.stringify(data));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Research could not be completed.");
-    } finally {
-      setLoading(false);
-    }
+      if (!response.ok) throw new Error(data.error ?? "Research failed.");
+      updateGraph(data); setSelection({ kind: "node", id: data.nodes[0]?.id ?? "target-company" }); setModal(null);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Research failed."); }
+    finally { setBusy(null); }
   }
 
-  function downloadGraph() {
-    const blob = new Blob([JSON.stringify(graph, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${graph.company.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-atlas.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  function addNode(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const form = new FormData(event.currentTarget); const label = String(form.get("label") ?? "").trim(); if (!label) return;
+    const type = String(form.get("type")) as AtlasNode["type"]; const idBase = `${slug(type)}-${slug(label)}`; const id = graph.nodes.some((node) => node.id === idBase) ? `${idBase}-${Date.now().toString(36)}` : idBase;
+    const node: AtlasNode = { id, type, label, summary: String(form.get("summary") || "Research hypothesis added by the analyst."), evidenceIds: [], unknowns: ["This analyst-added entity has no attached evidence yet."], layers: [String(form.get("layer")) as GraphLayer] };
+    updateGraph({ ...graph, nodes: [...graph.nodes, node] }); setSelection({ kind: "node", id }); setModal(null);
   }
 
-  return (
-    <main className="atlas-shell">
-      <header className="topbar">
-        <a className="wordmark" href="#top" aria-label="Enterprise Atlas home"><span className="mark">EA</span> Enterprise Atlas</a>
-        <div className="top-meta"><span className="live-dot" /> Public evidence intelligence</div>
-        <button className="export-button" type="button" onClick={downloadGraph}>Export graph <span>↗</span></button>
-      </header>
+  function addEdge(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const form = new FormData(event.currentTarget); const evidenceId = String(form.get("evidenceId") ?? ""); if (!evidenceId) { setError("A source is required for every relationship."); return; }
+    const source = String(form.get("source")); const target = String(form.get("target")); if (source === target) { setError("A relationship must connect two different entities."); return; }
+    const edge: AtlasEdge = { id: `edge-${Date.now().toString(36)}`, source, target, type: String(form.get("type")) as AtlasEdge["type"], status: String(form.get("status")) as ClaimStatus, confidence: Number(form.get("confidence")) / 100, evidenceIds: [evidenceId], rationale: String(form.get("rationale") || "Analyst-added relationship; review the attached evidence."), layer: String(form.get("layer")) as GraphLayer };
+    updateGraph({ ...graph, edges: [...graph.edges, edge] }); setSelection({ kind: "edge", id: edge.id }); setModal(null);
+  }
 
-      <form className="query-bar" id="top" aria-label="Research query" onSubmit={runResearch}>
-        <label className="field company-field"><span className="field-label">Target enterprise</span><input value={company} onChange={(event) => setCompany(event.target.value)} placeholder="e.g. Mercedes-Benz Group" /></label>
-        <label className="field product-field"><span className="field-label">Startup product</span><input value={product} onChange={(event) => setProduct(event.target.value)} placeholder="Describe the product and problem it solves" /></label>
-        <label className="field geo-field"><span className="field-label">Geography</span><input value={geography} onChange={(event) => setGeography(event.target.value)} placeholder="Optional" /></label>
-        <button className="run-button" type="submit" disabled={loading}>{loading ? "Researching…" : "Run research"}<span>→</span></button>
-      </form>
+  async function ingestSource(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy("source"); setError(null); const form = new FormData(event.currentTarget);
+    try {
+      const response = await fetch("/api/ingest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: form.get("url") }) });
+      const data = await response.json() as AtlasEvidence & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Source ingestion failed.");
+      updateGraph({ ...graph, evidence: [...graph.evidence.filter((item) => item.url !== data.url), data] }); setModal(null); setResultTab("sources");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Source ingestion failed."); }
+    finally { setBusy(null); }
+  }
 
-      {error && <div className="notice error-notice"><strong>Research stopped.</strong> {error}<button type="button" onClick={() => setError(null)} aria-label="Dismiss error">×</button></div>}
-      {graph.illustrative && <div className="notice fixture-banner"><strong>Illustrative sample</strong><span>This fixture exists only for UI development. Roles are hypotheses, no people are named, and no reporting or purchasing authority is asserted.</span></div>}
-      {!graph.illustrative && graph.warnings.length > 0 && <div className="notice warning-banner"><strong>{graph.warnings.length} research note{graph.warnings.length === 1 ? "" : "s"}</strong><span>{graph.warnings[0]}</span></div>}
+  function mergeDuplicate(keep: AtlasNode, remove: AtlasNode) {
+    const nodes = graph.nodes.filter((node) => node.id !== remove.id).map((node) => node.id === keep.id ? { ...node, evidenceIds: [...new Set([...node.evidenceIds, ...remove.evidenceIds])], aliases: [...new Set([...(node.aliases ?? []), remove.label, ...(remove.aliases ?? [])])] } : node);
+    const edges = graph.edges.map((edge) => ({ ...edge, source: edge.source === remove.id ? keep.id : edge.source, target: edge.target === remove.id ? keep.id : edge.target })).filter((edge, index, all) => all.findIndex((item) => item.source === edge.source && item.target === edge.target && item.type === edge.type) === index && edge.source !== edge.target);
+    updateGraph({ ...graph, nodes, edges }); setSelection({ kind: "node", id: keep.id });
+  }
 
-      <section className="workspace">
-        <aside className="left-panel panel">
-          <div className="panel-title"><span>Business map</span><span>{businessNodes.length}</span></div>
-          <div className="account-card"><div className="company-monogram">{initials(graph.company)}</div><div><strong>{graph.company}</strong><span>{graph.nodes.length} mapped entities</span></div></div>
-          <nav className="unit-nav" aria-label="Business units and functions">
-            {businessNodes.length ? businessNodes.map((node) => (
-              <button type="button" key={node.id} className={selection.id === node.id ? "active" : ""} onClick={() => setSelection({ kind: "node", id: node.id })}>
-                <span className="unit-icon" style={{ background: TYPE_COLORS[node.type] }}>{node.type === "BusinessUnit" ? "BU" : "FN"}</span><span>{node.label}</span><em>{graph.edges.filter((edge) => edge.source === node.id || edge.target === node.id).length}</em>
-              </button>
-            )) : <div className="empty-nav">No functions verified yet.</div>}
-          </nav>
-          <div className="filter-block"><span className="eyebrow">Evidence status</span>{STATUS_OPTIONS.map((option) => <label key={option.value}><input type="checkbox" checked={statuses.has(option.value)} onChange={() => toggleStatus(option.value)} /> {option.label}</label>)}</div>
-          <div className="filter-block source-mix"><span className="eyebrow">Sources observed</span>{Object.entries(graph.evidence.reduce<Record<string, number>>((counts, item) => ({ ...counts, [item.sourceType]: (counts[item.sourceType] ?? 0) + 1 }), {})).map(([type, count]) => <div key={type}><span>{type}</span><b>{count}</b></div>)}{!graph.evidence.length && <p>No sources collected.</p>}</div>
-          <div className="fixture-note"><span>{graph.illustrative ? "Illustrative fixture" : `Live run · ${graph.provider}`}</span><p>{graph.illustrative ? "Use Run research to replace this sample with a fresh evidence graph." : `Observed ${new Date(graph.createdAt).toLocaleDateString()}. Saved on this device.`}</p></div>
-        </aside>
+  return <main className="atlas-shell">
+    <header className="topbar"><a className="wordmark" href="#workspace"><span>EA</span><strong>Enterprise Atlas</strong></a><div className="top-context"><span className="live-dot" />Evidence workspace <b>/</b> Mercedes-Benz</div><div className="top-actions"><button type="button" onClick={() => setModal("research")}>New research</button><button className="primary" type="button" onClick={downloadGraph}>Export ↗</button></div></header>
+    {error && <div className="global-alert"><span>{error}</span><button type="button" onClick={() => setError(null)}>×</button></div>}
 
-        <section className="graph-panel panel">
-          <div className="graph-toolbar"><div><span className="eyebrow">Buying-center graph</span><h1>{graph.nodes.length > 1 ? "Who owns the problem?" : "Evidence still needed"}</h1></div><div className="legend">{nodeTypeLegend.map((type) => <span key={type}><i style={{ background: TYPE_COLORS[type] }} />{type.replace(/([a-z])([A-Z])/g, "$1 $2")}</span>)}</div></div>
-          <div className="graph-canvas">
-            <div className="graph-grid" />
-            <GraphView graph={graph} selection={selection} statuses={statuses} onSelect={setSelection} />
-            {loading && <div className="research-overlay"><div className="research-card"><span className="research-spinner" /><strong>Building the evidence graph</strong><div className="research-steps"><span>Expanding the business problem</span><span>Discovering public sources</span><span>Extracting traceable facts</span><span>Ranking credible routes</span></div><small>No outreach is sent.</small></div></div>}
-          </div>
-          <div className="graph-footer"><span><b>{graph.nodes.length}</b> entities</span><span><b>{graph.edges.length}</b> relationships</span><span><b>{graph.evidence.length}</b> sources</span><span className="coverage">Evidence coverage <b>{sourceCoverage}%</b></span></div>
+    <section className="workbench" id="workspace">
+      <aside className="sidebar">
+        <div className="workspace-label"><span>WORKSPACE 01</span><strong>{graph.company}</strong><small>{graph.geography || "Global research"}</small></div>
+        <nav className="main-nav" aria-label="Workspace sections"><button className="active" type="button"><span>⌘</span>Ontology</button><button type="button" onClick={() => { setResultTab("sources"); document.getElementById("results")?.scrollIntoView({ behavior: "smooth" }); }}><span>◫</span>Evidence <b>{graph.evidence.length}</b></button><button type="button" onClick={() => { setResultTab("stakeholders"); document.getElementById("results")?.scrollIntoView({ behavior: "smooth" }); }}><span>◎</span>People <b>{graph.nodes.filter((node) => node.type === "Person").length}</b></button><button type="button" onClick={() => setModal("duplicates")}><span>◇</span>Merge queue <b>{duplicates.length}</b></button></nav>
+        <div className="sidebar-section"><div className="sidebar-heading"><span>Business map</span><b>{businessNodes.length}</b></div>{businessNodes.map((node) => <button type="button" className={`entity-nav ${selection.id === node.id ? "active" : ""}`} key={node.id} onClick={() => select({ kind: "node", id: node.id })}><i style={{ background: TYPE_COLORS[node.type] }} /><span>{node.label}</span></button>)}</div>
+        <div className="sidebar-section status-filters"><div className="sidebar-heading"><span>Relationship status</span></div>{(["confirmed", "inferred", "uncertain"] as ClaimStatus[]).map((status) => <label key={status}><input type="checkbox" checked={statuses.has(status)} onChange={() => toggleStatus(status)} /><span>{labelize(status)}</span></label>)}</div>
+        <div className="connection-stack"><div><span className="connection-dot connected" /><p><strong>Public evidence</strong><small>{graph.evidence.filter((item) => item.access !== "licensed").length} sources indexed</small></p></div><button type="button" onClick={openNeedle}><span className={`connection-dot ${graph.evidence.some((item) => item.provider === "Needle") ? "connected" : ""}`} /><p><strong>Needle enrichment</strong><small>{graph.evidence.some((item) => item.provider === "Needle") ? "Licensed data loaded" : "Connect read-only"}</small></p><b>→</b></button></div>
+      </aside>
+
+      <section className="canvas-column">
+        <div className="workspace-header"><div><span className="kicker">TARGET ACCOUNT / AFTERSALES INTELLIGENCE</span><h1>{graph.company}</h1><p>{graph.product}</p></div><div className="research-meta"><span><b>{graph.nodes.length}</b> entities</span><span><b>{graph.edges.length}</b> relations</span><span><b>{sourceCoverage}%</b> sourced</span></div></div>
+        <div className="canvas-toolbar"><div className="layer-tabs" aria-label="Ontology layer">{(["organization", "buying_center", "combined"] as const).map((layer) => <button type="button" key={layer} className={activeLayer === layer ? "active" : ""} onClick={() => setActiveLayer(layer)}>{layer === "buying_center" ? "Buying center" : labelize(layer)}</button>)}</div><div className="ontology-actions"><button type="button" onClick={() => setModal("node")}>＋ Entity</button><button type="button" onClick={() => setModal("edge")}>↗ Connect</button><button type="button" onClick={() => setModal("source")}>↓ Ingest URL</button><button className="needle-action" type="button" onClick={openNeedle}>N Needle enrich</button></div></div>
+        <div className="graph-frame"><div className="graph-caption"><span>{activeLayer === "organization" ? "Formal structure and affiliation" : activeLayer === "buying_center" ? "Problem ownership, evaluation, procurement, and entry routes" : "Combined decision ontology"}</span><div>{Object.entries(TYPE_COLORS).slice(0, 7).map(([type, color]) => <i key={type} title={type} style={{ background: color }} />)}</div></div><GraphView graph={visibleGraph} selection={selection} statuses={statuses} onSelect={select} />{busy === "research" && <div className="busy-overlay"><span /><strong>Building evidence graph</strong><small>Discovery → extraction → resolution → ranking</small></div>}</div>
+
+        <section className="results" id="results">
+          <div className="results-tabs"><div>{(["stakeholders", "paths", "sources"] as ResultTab[]).map((tab) => <button key={tab} type="button" className={resultTab === tab ? "active" : ""} onClick={() => setResultTab(tab)}>{tab === "stakeholders" ? "Ranked committee" : tab === "paths" ? "Entry routes" : "Evidence ledger"}<b>{tab === "stakeholders" ? graph.stakeholders.length : tab === "paths" ? graph.entryPaths.length : graph.evidence.length}</b></button>)}</div><span>Observed {new Date(graph.createdAt).toLocaleDateString()}</span></div>
+          {resultTab === "stakeholders" && <div className="stakeholder-table"><div className="table-head"><span>Candidate</span><span>Why relevant</span><span>Evidence</span><span>Signal</span><span>Score</span></div>{graph.stakeholders.map((candidate, index) => <button type="button" className="table-row" key={candidate.id} onClick={() => select({ kind: "node", id: candidate.nodeId })}><span><i>{String(index + 1).padStart(2, "0")}</i><b>{candidate.label}</b><small>{candidate.role}</small></span><span>{candidate.unknowns[0] ?? candidate.rationale}</span><span>{candidate.evidenceStrength}</span><span>{candidate.buyingSignal}</span><span><em>{candidate.score}</em></span></button>)}</div>}
+          {resultTab === "paths" && <div className="path-list">{graph.entryPaths.map((path, index) => <article key={path.id}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{path.title}</strong><p>{path.summary}</p><div className="route">{path.nodeIds.map((id, pathIndex) => <span key={id}><button type="button" onClick={() => select({ kind: "node", id })}>{graph.nodes.find((node) => node.id === id)?.label ?? id}</button>{pathIndex < path.nodeIds.length - 1 && <b>→</b>}</span>)}</div></div><em className={path.confidence}>{path.confidence}</em></article>)}</div>}
+          {resultTab === "sources" && <div className="source-table">{graph.evidence.map((item) => <article key={item.id}><div><span>{item.sourceType}</span>{item.access === "licensed" && <em>LICENSED</em>}</div><strong>{item.title}</strong><p>{item.excerpt}</p><small>{item.observedAt} · {item.provider ?? "Public web"}</small><a href={item.url} target="_blank" rel="noreferrer">Open source ↗</a></article>)}</div>}
         </section>
-
-        <aside className="right-panel panel">
-          <div className="panel-title"><span>Evidence detail</span><span className={`status-pill ${selectedStatus}`}>{selectedStatus}</span></div>
-          <div className="entity-heading"><span className="entity-type">{selectedNode?.type ?? selectedEdge?.type.replaceAll("_", " ") ?? "SELECTION"}</span><h2>{selectedTitle}</h2><p>{selectedSummary}</p></div>
-          {(selectedUnknowns.length > 0 || !selectedNode?.evidenceIds.length) && <div className="unknown-callout"><span>!</span><p><strong>Unknowns remain</strong>{selectedUnknowns[0] ?? "This entity has no direct public evidence. Inspect related relationships before relying on it."}</p></div>}
-          {selectedEdge && <div className="confidence-block"><span>Relationship confidence</span><strong>{Math.round(selectedEdge.confidence * 100)}%</strong><div><i style={{ width: `${selectedEdge.confidence * 100}%` }} /></div><small>Confidence is evidence quality, not purchasing authority.</small></div>}
-          <div className="evidence-list"><span className="eyebrow">Supporting evidence · {selectionEvidence.length}</span>{selectionEvidence.map((item) => <article key={item.id}><div className="source-icon">{item.sourceType[0].toUpperCase()}</div><div><strong>{item.title}</strong><p>{item.excerpt}</p><small>{item.observedAt}{item.locator ? ` · ${item.locator}` : ""}</small><a href={item.url} target="_blank" rel="noreferrer">View source ↗</a></div></article>)}{!selectionEvidence.length && <div className="empty-evidence"><strong>No supporting source attached</strong><p>Treat this selection as a research hypothesis, not a material claim.</p></div>}</div>
-        </aside>
       </section>
 
-      <section className="insights-grid">
-        <div className="insight-panel"><div className="section-heading"><div><span className="eyebrow">Ranked stakeholders</span><h2>Buying committee candidates</h2></div><button type="button" onClick={() => setShowMethod(true)}>View methodology</button></div>
-          <div className="stakeholder-row header"><span>Candidate</span><span>Evidence</span><span>Signal</span><span>Reach</span><span>Score</span></div>
-          {graph.stakeholders.map((candidate, index) => <button type="button" className="stakeholder-row stakeholder-button" key={candidate.id} onClick={() => setSelection({ kind: "node", id: candidate.nodeId })}><span><b>{index + 1}</b><strong>{candidate.label}</strong><small>{candidate.role} · {candidate.unknowns[0] ?? "Authority unknown"}</small></span><span>{candidate.evidenceStrength}</span><span><i className="signal-dot" />{candidate.buyingSignal}</span><span>{candidate.reachability}</span><span><em>{candidate.score}</em></span></button>)}
-          {!graph.stakeholders.length && <div className="empty-table"><strong>No stakeholder can be ranked yet.</strong><p>The app will not invent names or upgrade titles into authority.</p></div>}
-        </div>
-        <div className="paths-panel"><div className="section-heading"><div><span className="eyebrow">Recommended entry routes</span><h2>Credible paths in</h2></div><span>{graph.entryPaths.length} route{graph.entryPaths.length === 1 ? "" : "s"}</span></div>
-          {graph.entryPaths.map((path, index) => <article className="path-card" key={path.id}><div className="path-number">{String(index + 1).padStart(2, "0")}</div><div><strong>{path.title}</strong><p>{path.summary}</p><div className="mini-path">{path.nodeIds.map((id, pathIndex) => <span className="path-fragment" key={id}><button type="button" onClick={() => setSelection({ kind: "node", id })}>{graph.nodes.find((node) => node.id === id)?.label ?? id}</button>{pathIndex < path.nodeIds.length - 1 && <b>→</b>}</span>)}</div></div><em className={path.confidence}>{path.confidence}</em></article>)}
-          {!graph.entryPaths.length && <div className="empty-table"><strong>No evidence-backed path yet.</strong><p>Look for suppliers, partners, public events, or formal procurement processes.</p></div>}
-        </div>
-      </section>
+      <aside className="inspector">
+        <div className="inspector-top"><span>Inspector</span><span className={`status-chip ${selectedStatus}`}>{selectedStatus}</span></div>
+        <div className="entity-summary"><div className="entity-mark" style={{ background: TYPE_COLORS[selectedNode?.type ?? "Evidence"] }}>{selectedNode ? initials(selectedNode.label) : "↗"}</div><span>{selectedNode?.type ?? labelize(selectedEdge?.type ?? "Relationship")}</span><h2>{selectedTitle}</h2><p>{selectedNode?.summary ?? selectedEdge?.rationale ?? "Select an entity or relationship."}</p></div>
+        <div className="inspector-tabs">{(["properties", "evidence", "relationships"] as InspectorTab[]).map((tab) => <button type="button" key={tab} className={inspectorTab === tab ? "active" : ""} onClick={() => setInspectorTab(tab)}>{labelize(tab)}</button>)}</div>
+        {inspectorTab === "properties" && <div className="inspector-content properties-list"><div><span>Layer</span><strong>{selectedNode?.layers?.map(labelize).join(", ") ?? labelize(selectedEdge?.layer ?? "unassigned")}</strong></div><div><span>Evidence links</span><strong>{selectedEvidence.length}</strong></div>{selectedEdge && <><div><span>Relationship</span><strong>{labelize(selectedEdge.type)}</strong></div><div><span>Confidence</span><strong>{Math.round(selectedEdge.confidence * 100)}%</strong></div></>}<div className="unknown-box"><span>Unknowns</span>{(selectedNode?.unknowns ?? (selectedEdge?.status !== "confirmed" ? ["The public evidence does not explicitly establish this decision relationship."] : ["No explicit unknowns recorded."])).map((unknown) => <p key={unknown}>— {unknown}</p>)}</div><p className="authority-note">A title, profile, or conference appearance never establishes budget or purchasing authority on its own.</p></div>}
+        {inspectorTab === "evidence" && <div className="inspector-content inspector-evidence">{selectedEvidence.map((item) => <article key={item.id}><div><span>{item.sourceType}</span><small>{item.observedAt}</small></div><strong>{item.title}</strong><p>{item.excerpt}</p><a href={item.url} target="_blank" rel="noreferrer">View source ↗</a></article>)}{!selectedEvidence.length && <div className="empty-state">No evidence attached. Treat this as a hypothesis.</div>}</div>}
+        {inspectorTab === "relationships" && <div className="inspector-content relationship-list">{incidentEdges.map((edge) => { const otherId = edge.source === selectedNode?.id ? edge.target : edge.source; return <button type="button" key={edge.id} onClick={() => select({ kind: "edge", id: edge.id })}><span>{labelize(edge.type)}</span><strong>{graph.nodes.find((node) => node.id === otherId)?.label}</strong><em className={edge.status}>{edge.status}</em></button>; })}{!incidentEdges.length && <div className="empty-state">No relationships for this selection.</div>}</div>}
+        <div className="inspector-source"><span>WORKSPACE PROVENANCE</span><strong>{graph.provider}</strong><small>{graph.warnings[0]}</small></div>
+      </aside>
+    </section>
 
-      <section className="research-ledger">
-        <div className="section-heading"><div><span className="eyebrow">Research ledger</span><h2>Queries &amp; source trail</h2></div><span>{graph.queries.length} searches · {graph.synonyms.length} problem terms</span></div>
-        <div className="ledger-grid"><div><span className="eyebrow">Problem expansion</span><div className="chip-list">{graph.synonyms.map((term) => <span key={term}>{term}</span>)}</div></div><div><span className="eyebrow">Discovery queries</span><ol>{graph.queries.slice(0, 6).map((query) => <li key={query}>{query}</li>)}</ol></div><div><span className="eyebrow">Guardrails</span><ul><li>Public, normally retrievable sources only</li><li>No LinkedIn scraping or access bypass</li><li>No inferred budget or purchase authority</li><li>No automatic outreach</li></ul></div></div>
-      </section>
-
-      {showMethod && <div className="modal-backdrop" role="presentation" onMouseDown={() => setShowMethod(false)}><section className="method-modal" role="dialog" aria-modal="true" aria-labelledby="method-title" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" type="button" onClick={() => setShowMethod(false)} aria-label="Close methodology">×</button><span className="eyebrow">Transparent ranking</span><h2 id="method-title">Why a stakeholder ranks</h2><p>Scores are a prioritization aid, never proof of authority.</p><div className="formula-row"><span><b>35%</b> Problem ownership</span><span><b>30%</b> Evidence strength</span><span><b>20%</b> Buying signal</span><span><b>15%</b> Reachability</span></div><p className="method-note">People and roles without evidence remain visible as unknowns, but they cannot receive strong evidence scores. A job title or conference appearance alone never establishes budget or purchasing authority.</p></section></div>}
-    </main>
-  );
+    {modal === "research" && <ModalFrame eyebrow="LIVE PIPELINE" title="Start a new research run" onClose={() => setModal(null)}><form className="modal-form" onSubmit={runResearch}><label><span>Target enterprise</span><input name="company" defaultValue={graph.company} required /></label><label><span>Startup product description</span><textarea name="product" defaultValue={graph.product} rows={4} required /></label><label><span>Target geography</span><input name="geography" defaultValue={graph.geography} /></label><p className="form-note">This replaces the active workspace after public discovery and conservative extraction. No outreach is sent.</p><button className="submit-button" disabled={busy === "research"}>{busy === "research" ? "Researching…" : "Run research →"}</button></form></ModalFrame>}
+    {modal === "node" && <ModalFrame eyebrow="ONTOLOGY EDITOR" title="Add an entity" onClose={() => setModal(null)}><form className="modal-form" onSubmit={addNode}><label><span>Entity type</span><select name="type">{NODE_TYPES.filter((type) => type !== "Evidence").map((type) => <option key={type}>{type}</option>)}</select></label><label><span>Label</span><input name="label" required placeholder="e.g. Warranty analytics team" /></label><label><span>Summary</span><textarea name="summary" rows={3} placeholder="What is known, without overclaiming" /></label><label><span>Graph layer</span><select name="layer"><option value="organization">Organization</option><option value="buying_center">Buying center</option><option value="ecosystem">Ecosystem</option></select></label><p className="form-note">An entity can be added as a research hypothesis. Attach evidence before relying on it.</p><button className="submit-button">Add entity →</button></form></ModalFrame>}
+    {modal === "edge" && <ModalFrame eyebrow="ONTOLOGY EDITOR" title="Connect two entities" onClose={() => setModal(null)}><form className="modal-form" onSubmit={addEdge}><div className="form-grid"><label><span>From</span><select name="source">{graph.nodes.map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}</select></label><label><span>To</span><select name="target" defaultValue="aftersales">{graph.nodes.map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}</select></label></div><label><span>Relationship</span><select name="type">{EDGE_TYPES.map((type) => <option key={type}>{type}</option>)}</select></label><div className="form-grid"><label><span>Status</span><select name="status"><option value="confirmed">Confirmed</option><option value="inferred">Inferred</option><option value="uncertain">Uncertain</option></select></label><label><span>Layer</span><select name="layer"><option value="buying_center">Buying center</option><option value="organization">Organization</option><option value="ecosystem">Ecosystem</option></select></label></div><label><span>Confidence <small>0–100</small></span><input name="confidence" type="number" min="0" max="100" defaultValue="70" /></label><label><span>Required source</span><select name="evidenceId" required defaultValue=""><option value="" disabled>Select evidence…</option>{graph.evidence.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><label><span>Rationale</span><textarea name="rationale" rows={3} required placeholder="What the source proves—and what it does not" /></label><button className="submit-button">Create sourced relationship →</button></form></ModalFrame>}
+    {modal === "source" && <ModalFrame eyebrow="SOURCE INGESTION" title="Add a public evidence URL" onClose={() => setModal(null)}><form className="modal-form" onSubmit={ingestSource}><label><span>Public URL</span><input name="url" type="url" required placeholder="https://…" /></label><p className="form-note">Enterprise Atlas uses ordinary permitted retrieval, records the observation date, and never bypasses access controls.</p><button className="submit-button" disabled={busy === "source"}>{busy === "source" ? "Retrieving…" : "Ingest source →"}</button></form></ModalFrame>}
+    {modal === "needle" && <ModalFrame eyebrow="LICENSED ENRICHMENT" title="Needle LinkedIn research" onClose={() => setModal(null)}><div className="provider-status"><span className={`connection-dot ${needleStatus?.configured ? "connected" : ""}`} /><div><strong>{needleStatus ? needleStatus.configured ? "Read-only adapter ready" : "Adapter not configured" : "Checking connection…"}</strong><p>{needleStatus?.message}</p></div></div><div className="guardrail-list"><span>✓ People and company search only</span><span>✓ Provider provenance on every record</span><span>✓ Exact-match resolution; ambiguity stays separate</span><span>× No messaging, email guessing, or outreach</span></div><label className="cluster-field"><span>Search clusters · one per line</span><textarea rows={6} value={needleKeywords} onChange={(event) => setNeedleKeywords(event.target.value)} /></label>{needleStatus && !needleStatus.configured && <code className="env-code">NEEDLE_API_KEY=…{"\n"}NEEDLE_CONNECTED_ACCOUNT_ID=…</code>}<button className="submit-button" type="button" onClick={runNeedle} disabled={!needleStatus?.configured || busy === "needle"}>{busy === "needle" ? "Enriching…" : "Run licensed enrichment →"}</button></ModalFrame>}
+    {modal === "duplicates" && <ModalFrame eyebrow="ENTITY RESOLUTION" title="Review possible duplicates" onClose={() => setModal(null)}>{duplicates.length ? <div className="duplicate-list">{duplicates.map(([left, right]) => <article key={`${left.id}-${right.id}`}><div><span>{left.type}</span><strong>{left.label}</strong></div><b>≈</b><div><span>{right.type}</span><strong>{right.label}</strong></div><button type="button" onClick={() => mergeDuplicate(left, right)}>Merge into first</button></article>)}</div> : <div className="empty-modal"><strong>No merge candidates</strong><p>Enterprise Atlas found no exact label or alias collisions. Ambiguous entities remain separate by design.</p></div>}</ModalFrame>}
+  </main>;
 }

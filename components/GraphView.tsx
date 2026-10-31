@@ -34,7 +34,8 @@ export function GraphView({
   const container = useRef<HTMLDivElement>(null);
   const instance = useRef<Core | null>(null);
   const selectCallback = useRef(onSelect);
-  selectCallback.current = onSelect;
+
+  useEffect(() => { selectCallback.current = onSelect; }, [onSelect]);
 
   useEffect(() => {
     if (!container.current) return;

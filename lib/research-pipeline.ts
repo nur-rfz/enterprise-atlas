@@ -68,7 +68,7 @@ async function retrieve(result: SearchResult): Promise<SearchResult & { retrieve
 }
 
 function resolveFacts(company: string, facts: ExtractedFactSet | null, evidence: AtlasEvidence[]): { nodes: AtlasNode[]; edges: AtlasEdge[] } {
-  const companyNode: AtlasNode = { id: "target-company", type: "Company", label: company, summary: "Target enterprise supplied by the researcher.", evidenceIds: [] };
+  const companyNode: AtlasNode = { id: "target-company", type: "Company", label: company, summary: "Target enterprise supplied by the researcher.", evidenceIds: [], layers: ["organization", "buying_center"] };
   if (!facts) return { nodes: [companyNode], edges: [] };
 
   const nodeTypes = new Set<string>(NODE_TYPES);
@@ -96,6 +96,7 @@ function resolveFacts(company: string, facts: ExtractedFactSet | null, evidence:
       evidenceIds,
       aliases: fact.aliases,
       unknowns: fact.unknowns,
+      layers: fact.layers?.length ? fact.layers : ["Company", "BusinessUnit", "Function", "Person", "Role"].includes(fact.type) ? ["organization"] : ["buying_center"],
     };
     resolved.set(identity, node);
     keyToId.set(fact.key, id);
@@ -117,6 +118,7 @@ function resolveFacts(company: string, facts: ExtractedFactSet | null, evidence:
       confidence: Math.max(0, Math.min(1, fact.confidence)),
       evidenceIds,
       rationale: fact.rationale,
+      layer: fact.layer ?? (["BELONGS_TO", "WORKS_IN", "REPORTS_TO"].includes(fact.type) ? "organization" : ["PARTNERS_WITH", "PROCURED"].includes(fact.type) ? "ecosystem" : "buying_center"),
     });
   }
   return { nodes: [...resolved.values()], edges };
@@ -129,9 +131,9 @@ function scoreStakeholders(nodes: AtlasNode[], edges: AtlasEdge[]): StakeholderC
     const types = new Set(related.map((edge) => edge.type));
     const linkedIds = new Set(related.flatMap((edge) => [edge.source, edge.target]));
     const linkedNodes = nodes.filter((item) => linkedIds.has(item.id));
-    const problemOwnership = types.has("OWNS_PROJECT") ? 92 : types.has("WORKS_IN") ? 72 : types.has("INFLUENCES") ? 64 : 38;
+    const problemOwnership = types.has("OWNS_PROJECT") || types.has("SPONSORS_PROJECT") ? 92 : types.has("EVALUATES") ? 76 : types.has("WORKS_IN") ? 68 : types.has("INFLUENCES") ? 64 : 38;
     const evidenceStrength = Math.min(100, 20 + node.evidenceIds.length * 18 + related.reduce((sum, edge) => sum + edge.confidence * 10, 0));
-    const buyingSignal = linkedNodes.some((item) => item.type === "Tender") ? 88 : linkedNodes.some((item) => item.type === "Project") ? 72 : linkedNodes.some((item) => item.type === "Technology") ? 58 : 36;
+    const buyingSignal = types.has("CONTROLS_VENDOR_PROCESS") || linkedNodes.some((item) => item.type === "Tender") ? 88 : linkedNodes.some((item) => item.type === "Project") ? 72 : linkedNodes.some((item) => item.type === "Technology") ? 58 : 36;
     const reachability = linkedNodes.some((item) => ["Partner", "Event", "Tender"].includes(item.type)) ? 82 : Math.min(74, 35 + related.length * 8);
     const score = Math.round(problemOwnership * 0.35 + evidenceStrength * 0.3 + buyingSignal * 0.2 + reachability * 0.15);
     return {
@@ -199,7 +201,7 @@ export async function runResearch(input: ResearchRequest): Promise<ResearchGraph
   if (!provider) warnings.push("No web search provider is configured. Add TAVILY_API_KEY or BRAVE_SEARCH_API_KEY to run live discovery.");
   if (!process.env.OPENAI_API_KEY) warnings.push("OPENAI_API_KEY is not configured. Structured fact extraction was skipped.");
 
-  let discovered: SearchResult[] = [];
+  const discovered: SearchResult[] = [];
   if (provider) {
     const batches = await Promise.allSettled(queries.slice(0, 7).map((query) => provider.search(query, 4)));
     for (const batch of batches) {

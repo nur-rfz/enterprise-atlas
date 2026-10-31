@@ -20,10 +20,11 @@ test("server-renders the Enterprise Atlas workspace", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>Enterprise Atlas — Buying-center intelligence<\/title>/i);
-  assert.match(html, /Public evidence intelligence/);
-  assert.match(html, /Illustrative sample/);
-  assert.match(html, /Buying committee candidates/);
-  assert.match(html, /No automatic outreach/);
+  assert.match(html, /Evidence workspace/);
+  assert.match(html, /Mercedes-Benz Group/);
+  assert.match(html, /Combined decision ontology/);
+  assert.match(html, /Ranked committee/);
+  assert.match(html, /never establishes budget or purchasing authority/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/);
 });
 
@@ -38,16 +39,19 @@ test("research API validates required inputs", async () => {
   assert.match(await response.text(), /required/i);
 });
 
-test("fixture and pipeline preserve evidence guardrails", async () => {
-  const [fixture, pipeline, extractor] = await Promise.all([
-    readFile(new URL("../lib/sample-graph.ts", import.meta.url), "utf8"),
+test("Mercedes snapshot and pipeline preserve evidence guardrails", async () => {
+  const [fixture, pipeline, extractor, needle] = await Promise.all([
+    readFile(new URL("../lib/mercedes-graph.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/research-pipeline.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/openai-extraction.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/needle-provider.ts", import.meta.url), "utf8"),
   ]);
-  assert.match(fixture, /illustrative:\s*true/);
-  assert.match(fixture, /Budget authority unknown/);
+  assert.match(fixture, /illustrative:\s*false/);
+  assert.match(fixture, /budget authority/i);
   assert.match(fixture, /https:\/\/group\.mercedes-benz\.com\/company\/suppliers\//);
   assert.match(pipeline, /status === "confirmed" && evidenceIds\.length === 0/);
   assert.match(extractor, /Never invent people/);
   assert.match(extractor, /Do not infer purchasing authority/);
+  assert.match(needle, /read-only LinkedIn enrichment/i);
+  assert.doesNotMatch(needle, /\/messages|send-message|send-inmail/i);
 });

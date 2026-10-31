@@ -15,6 +15,10 @@ The product is intentionally an evidence graph, not a scraped org chart. Every e
 - Stakeholder scoring from problem ownership, evidence strength, buying signal, and reachability
 - Short-path search from partners, events, and supplier/tender processes into target functions
 - Interactive Cytoscape.js graph with status filters and click-through evidence detail
+- Separate organization and buying-center layers, plus an external ecosystem overlay
+- Ontology editing for entities and evidence-required relationships
+- Public URL ingestion and an analyst-controlled duplicate merge queue
+- Read-only Needle LinkedIn enrichment with licensed-source provenance
 - Ranked buying committee, entry paths, unknowns, query ledger, and JSON export
 - Graceful empty-state results when a source, search provider, or model call is unavailable
 - Device-local persistence of the most recent live result through `localStorage`
@@ -33,6 +37,9 @@ Copy `.env.example` to `.env.local` and configure:
 | `SEARCH_PROVIDER` | For live discovery | `tavily` or `brave`. If omitted, the app detects a configured provider key. |
 | `TAVILY_API_KEY` | When using Tavily | Public-web search and optional cached page content. |
 | `BRAVE_SEARCH_API_KEY` | When using Brave | Public-web search. Pages are then retrieved normally by the server. |
+| `NEEDLE_API_KEY` | For licensed LinkedIn enrichment | Server-side Needle API credential. The adapter uses search only. |
+| `NEEDLE_CONNECTED_ACCOUNT_ID` | Recommended with Needle | Connected LinkedIn account selected in the Needle workspace. |
+| `NEEDLE_MODE` | No | `classic` (default) or `sales_navigator`. |
 
 Keep all keys server-side. None of these variables should use a `NEXT_PUBLIC_` prefix.
 
@@ -50,7 +57,7 @@ Open the local URL printed by the development server. Without keys, the complete
 
 ## Demo flow
 
-1. Start on the Mercedes-Benz warranty analytics fixture. The banner identifies it as illustrative.
+1. Start on the source-backed Mercedes-Benz aftersales workspace. Vendor claims and unresolved authority are labeled explicitly.
 2. Click a node or relationship. The right panel changes to its source trail, status, confidence, and unknowns.
 3. Toggle confirmed, inferred, and uncertain relationships in the left panel.
 4. Click a ranked stakeholder or an entry-path step to focus it in the graph.
@@ -112,7 +119,7 @@ For a team deployment, the next incremental step is a single SQLite/D1 table for
 
 ## Needle and optional providers
 
-[Needle MCP](https://needle.app/docs/mcp/introduction) can be added later as a licensed sponsor/contact-data adapter. It is not used as the public source-discovery engine in this MVP, and its LinkedIn capabilities must not be used for scraping or automatic outreach. A safe integration would remain server-side, require an authenticated licensed workspace, attach provider provenance to every record, and keep all outreach actions disabled.
+[Needle](https://needle.app/docs/mcp/introduction) is implemented as an optional server-side, read-only enrichment adapter. It searches LinkedIn through a connected, licensed Needle account, attaches `licensed` access and `Needle` provenance to every returned record, and creates only organization-affiliation edges. It does not call messaging endpoints, guess emails, send outreach, or infer buying authority from a title.
 
 TED public notices and other formal procurement feeds fit behind the same provider boundary. They are most useful for public-sector targets; their absence is not treated as evidence that a private enterprise has no buying activity.
 

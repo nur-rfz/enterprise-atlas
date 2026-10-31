@@ -25,12 +25,18 @@ export const EDGE_TYPES = [
   "PROCUREMENT_CONTACT_FOR",
   "INFLUENCES",
   "POTENTIAL_ENTRY_VIA",
+  "SPONSORS_PROJECT",
+  "EVALUATES",
+  "CONTROLS_VENDOR_PROCESS",
+  "PROCURED",
+  "INTRODUCES_TO",
 ] as const;
 
 export type NodeType = (typeof NODE_TYPES)[number];
 export type EdgeType = (typeof EDGE_TYPES)[number];
 export type ClaimStatus = "confirmed" | "inferred" | "uncertain";
-export type SourceType = "company" | "job" | "event" | "partner" | "tender" | "association" | "research" | "other";
+export type GraphLayer = "organization" | "buying_center" | "ecosystem";
+export type SourceType = "company" | "job" | "event" | "partner" | "tender" | "association" | "research" | "enrichment" | "other";
 
 export interface AtlasEvidence {
   id: string;
@@ -41,6 +47,8 @@ export interface AtlasEvidence {
   observedAt: string;
   sourceType: SourceType;
   available: boolean;
+  provider?: string;
+  access?: "public" | "licensed";
 }
 
 export interface AtlasNode {
@@ -51,6 +59,7 @@ export interface AtlasNode {
   evidenceIds: string[];
   aliases?: string[];
   unknowns?: string[];
+  layers?: GraphLayer[];
 }
 
 export interface AtlasEdge {
@@ -62,6 +71,7 @@ export interface AtlasEdge {
   confidence: number;
   evidenceIds: string[];
   rationale: string;
+  layer?: GraphLayer;
 }
 
 export interface StakeholderCandidate {
@@ -124,4 +134,12 @@ export interface SearchResult {
 export interface ExtractedFactSet {
   nodes: Array<Omit<AtlasNode, "id" | "evidenceIds"> & { key: string; evidenceIndexes: number[] }>;
   edges: Array<Omit<AtlasEdge, "id" | "source" | "target" | "evidenceIds"> & { sourceKey: string; targetKey: string; evidenceIndexes: number[] }>;
+}
+
+export interface GraphPatch {
+  provider: string;
+  nodes: AtlasNode[];
+  edges: AtlasEdge[];
+  evidence: AtlasEvidence[];
+  warnings: string[];
 }

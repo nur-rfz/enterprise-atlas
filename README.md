@@ -32,11 +32,18 @@ Claude through the steps:
 4. Build and curate the graph.
 5. Publish a redacted snapshot.
 
-## Live demo
+## Live demo (GitHub Pages)
 
-`docs/` holds a static, redacted export of the Mercedes-Benz build. To publish it, open
-**Settings → Pages**, set **Deploy from a branch**, then choose `main` and `/docs`.
-Regenerate it with `skills/enterprise-atlas/scripts/atlas.sh export-site ../docs`.
+`docs/` holds the static UI. Its data file, `docs/snapshot.json`, is **not committed**, because it is built from
+harvested personal data. To generate it locally:
+
+```bash
+skills/enterprise-atlas/scripts/atlas.sh export-site ../docs
+```
+
+The export reduces LinkedIn-only people to initials and removes their profile URLs. Review it before you
+publish. To publish, commit the file deliberately (`git add -f docs/snapshot.json`), then set
+Settings → Pages to `main` / `/docs`. You can also host the folder anywhere that serves static files.
 
 The hackathon pitch is in [`PITCH.md`](PITCH.md).
 

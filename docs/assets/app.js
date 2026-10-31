@@ -442,7 +442,7 @@ function relCard(r, self) {
       <span class="rt">${out ? "" : "← "}${esc(r.type)}${out ? " →" : ""}</span>
       <a data-goto="${esc(other)}" style="cursor:pointer;font-weight:550">${esc(otherLabel)}</a>
       <span class="status ${r.status}">${r.status}</span>
-      <span class="conf">${Math.round(r.confidence * 100)}% · ${r.n} src</span>
+      <span class="conf">${Math.round(r.confidence * 100)}% · ${r.n} obs</span>
     </header>
     <div class="claims">${r.assertions.map((a) => `<div class="claim">
       <div class="meta"><span class="tag basis">${esc(BASIS[a.basis] || a.basis)}</span><span>${Math.round(a.confidence * 100)}%</span><span>observed ${esc(a.observed_at)}</span>

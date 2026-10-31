@@ -160,3 +160,90 @@ def signals(store: Store, limit: int = 40) -> list[dict]:
         seen.add(r["url"])
         out.append({k: r[k] for k in ("id", "url", "title", "excerpt", "basis", "provider", "published_at", "observed_at", "claims")})
     return out[:limit]
+
+
+def explain(store: Store, problem: Problem) -> dict:
+    """Everything the 'How it works' view needs, computed from the live code and data."""
+    from .buying import REACHABILITY, ROLE_WEIGHT, infer_roles, topic_hits
+    from .ontology import (ESTABLISHES, LAYER_OF, MAX_CONFIDENCE_BY_BASIS, UNSUPPORTED_CEILING, Basis, EdgeType,
+                           NodeType as NT)
+    from .targets import TARGET as T
+    from .titles import parse_title
+
+    people = store.entities(NT.PERSON)
+    by_head = {p["props"].get("headline"): p for p in people if p["props"].get("headline")}
+
+    def parse_example(headline):
+        tp = parse_title(headline, T.UNIT_LEXICON, problem.topics)
+        p = by_head.get(headline)
+        return {"headline": headline, "title": tp.title, "employer": tp.employer_hint, "seniority": tp.seniority,
+                "functions": tp.functions, "subfunctions": tp.subfunctions, "units": tp.unit_hints,
+                "topics": topic_hits(problem, headline), "external": tp.external,
+                "roles": [{"role": r.role.value, "confidence": r.confidence, "rationale": r.rationale}
+                          for r in infer_roles(tp, problem)],
+                "person": p and {"id": p["id"], "label": p["label"], "unit": p["props"].get("unit"),
+                                 "score": (p["props"].get("scores") or {}).get("score")}}
+
+    wanted = [
+        "Director of Service & Parts Business and Warranty & Goodwill Mercedes-Benz Cars bei Mercedes-Benz AG",
+        "Team Lead Data, AI & Analytics After-Sales at Mercedes-Benz AG",
+        "Senior Manager | Lead Field Quality Software & OTA at MB.OS",
+        "Garantie & Kulanz Controllerin bei Mercedes-Benz AG",
+        "Global Software Category Manager - IT Procurement Mercedes-Benz Group AG",
+        "Executive Assistant to the Head of Van Customer Service & Parts bei Mercedes-Benz AG",
+    ]
+    placement = [parse_example(h) for h in wanted if h in by_head] or [parse_example(h) for h in list(by_head)[:5]]
+
+    hygiene = []
+    for p in people:
+        pr = p["props"]
+        kind = None
+        if pr.get("alumni"):
+            kind = "alumni"
+        elif pr.get("external"):
+            kind = "partner"
+        elif any("stale" in n for n in pr.get("notes") or []):
+            kind = "stale"
+        if pr.get("merged_from"):
+            hygiene.append({"kind": "merged", "id": p["id"], "label": p["label"], "headline": pr.get("headline"),
+                            "note": f"Seen anonymously as “LinkedIn Member” in another search; same headline and location, merged into one person."})
+        if kind:
+            hygiene.append({"kind": kind, "id": p["id"], "label": p["label"], "headline": pr.get("headline"),
+                            "note": " ".join(pr.get("notes") or []) or ("Delivery partner on the account." if kind == "partner" else "")})
+
+    # a corroborated edge to show the confidence math
+    sample = None
+    for e in sorted(store.edges("type='BELONGS_TO'"), key=lambda e: -len({a['evidence_id'] for a in e.assertions})):
+        if len(e.assertions) >= 3:
+            ents = {x: store.entity(x) for x in (e.src, e.dst)}
+            sample = {"src": ents[e.src]["label"], "dst": ents[e.dst]["label"], "type": e.type, "confidence": e.confidence,
+                      "status": e.status, "n": len(e.assertions),
+                      "each": [a["confidence"] for a in e.assertions][:8], "basis": e.assertions[0]["basis"]}
+            break
+
+    # hidden intelligence example: job-ad-backed structure
+    hidden = []
+    for e in store.edges():
+        bases = {a["basis"] for a in e.assertions}
+        if bases & {"job_ad", "event_program", "vendor_claim", "association", "procurement_record"}:
+            src, dst = store.entity(e.src), store.entity(e.dst)
+            ev = store.evidence([a["evidence_id"] for a in e.assertions if a["evidence_id"]])
+            hidden.append({"src": src["label"], "src_type": src["type"], "dst": dst["label"], "dst_type": dst["type"],
+                           "type": e.type, "basis": sorted(bases)[0], "confidence": e.confidence,
+                           "quote": e.assertions[0]["rationale"], "url": ev[0]["url"] if ev else None,
+                           "source": ev[0]["title"] if ev else None})
+    order = {"BELONGS_TO": 0, "USES_TECH": 1, "HIRING_FOR": 2, "SPOKE_ABOUT": 3, "CONTRIBUTED_TO": 4}
+    hidden.sort(key=lambda h: (order.get(h["type"], 9), -h["confidence"]))
+
+    return {
+        "node_types": [n.value for n in NT],
+        "edge_types": [{"type": t.value, "layer": LAYER_OF[t].value} for t in EdgeType],
+        "bases": [{"basis": b.value, "ceiling": MAX_CONFIDENCE_BY_BASIS[b],
+                   "establishes": sorted(t.value for t in ESTABLISHES[b]) if b != Basis.ANALYST else ["any"]}
+                  for b in Basis],
+        "unsupported_ceiling": UNSUPPORTED_CEILING,
+        "role_weights": {r.value: w for r, w in ROLE_WEIGHT.items()},
+        "reachability": {str(k): v for k, v in REACHABILITY.items()},
+        "placement": placement, "hygiene": hygiene[:12], "confidence_example": sample, "hidden": hidden[:8],
+        "counts": store.stats(),
+    }

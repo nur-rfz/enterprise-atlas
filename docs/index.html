@@ -3,10 +3,11 @@
 <head>
   <script>window.ATLAS_STATIC = true;</script>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Enterprise Atlas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Atlas · Mercedes-Benz</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/style.css" />
   <script src="assets/vendor/cytoscape.min.js"></script>
 </head>
@@ -18,28 +19,34 @@
       <span class="sep">/</span>
       <span class="pill ghost" id="problem">…</span>
     </div>
+    <span class="live" id="live"><i></i><span id="liveTxt">Live graph</span></span>
     <div class="search">
-      <input id="q" placeholder="Search people, teams, vendors…" autocomplete="off" />
+      <input id="q" placeholder="Search people, teams, vendors…" autocomplete="off" aria-label="Search the graph" />
+      <kbd>/</kbd>
       <div class="results" id="qres"></div>
     </div>
   </header>
 
   <div class="shell">
-    <nav class="side">
+    <nav class="side" aria-label="Views">
+      <div class="lh">Account</div>
       <a data-view="map" class="active">Decision map</a>
-      <a data-view="overview">Overview</a>
       <a data-view="buying">Buying center</a>
       <a data-view="paths">Entry paths</a>
+      <a data-view="overview">Overview</a>
+      <div class="lh">Graph</div>
       <a data-view="org">Org map</a>
-      <a data-view="graph">Graph</a>
+      <a data-view="graph">Network</a>
       <a data-view="evidence">Evidence</a>
+      <div class="lh">Engine</div>
+      <a data-view="how">How it works</a>
       <a data-view="sources">Sources</a>
       <div class="legend">
         <div class="lh">Claim status</div>
         <div><i class="dot confirmed"></i>Confirmed</div>
         <div><i class="dot inferred"></i>Inferred</div>
         <div><i class="dot uncertain"></i>Uncertain</div>
-        <p class="fine">Every relationship carries a source, an observation date and a confidence. Buying roles are hypotheses from titles and public activity, never proof of authority.</p>
+        <p class="fine">Every relationship carries a source, an observation date and a confidence. Buying roles are hypotheses, never proof of authority.</p>
       </div>
     </nav>
 

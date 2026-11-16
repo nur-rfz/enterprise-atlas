@@ -1,7 +1,7 @@
 # Enterprise Atlas
 
 Maps **how decisions happen** inside a large enterprise, not just its reporting lines.
-The first target is Mercedes-Benz, for a startup selling warranty and after-sales analytics.
+The first target is automotive, for a startup selling AI analytics.
 
 Two overlapping graphs live in one store:
 
